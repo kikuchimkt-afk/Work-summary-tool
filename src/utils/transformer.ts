@@ -64,6 +64,41 @@ export const subMin = (d: string, m: number): string => {
     return `${year}/${month}/${date} ${hours}:${minStr}`;
 };
 
+// Data Extraction Helpers
+export const getSortedStudentNames = (data: AttendanceRecord[]): string[] => {
+    // Map student to grade
+    const studentGrades = new Map<string, string>();
+    data.forEach(r => {
+        const s = r[INPUT_COL.STUDENT_NAME];
+        const g = r[INPUT_COL.GRADE];
+        if (s && g) studentGrades.set(s, g);
+    });
+
+    const gradeOrder = ['小1', '小2', '小3', '小4', '小5', '小6', '中1', '中2', '中3', '高1', '高2', '高3'];
+    const getGradeScore = (g: string) => {
+        const idx = gradeOrder.indexOf(g);
+        return idx !== -1 ? idx : 99;
+    };
+
+    return Array.from(studentGrades.keys()).sort((a, b) => {
+        const ga = studentGrades.get(a) || '';
+        const gb = studentGrades.get(b) || '';
+        const sa = getGradeScore(ga);
+        const sb = getGradeScore(gb);
+        if (sa !== sb) return sa - sb;
+        return a.localeCompare(b, 'ja');
+    });
+};
+
+export const getUniqueSubjects = (data: AttendanceRecord[]): string[] => {
+    const subjects = new Set<string>();
+    data.forEach(r => {
+        const s = r[INPUT_COL.SUBJECT];
+        if (s) subjects.add(s);
+    });
+    return Array.from(subjects).sort((a, b) => a.localeCompare(b, 'ja'));
+};
+
 
 // Sorting Logic
 export const sortData = (data: AttendanceRecord[], teacherSortOrder: string[]): AttendanceRecord[] => {
@@ -100,9 +135,12 @@ export const checkDataQuality = (data: AttendanceRecord[]) => {
             errorIndices.push(i);
         }
 
-        const txt = ((row[INPUT_COL.SUBJECT] || '') + (row[INPUT_COL.CONTENT] || '') + (row[INPUT_COL.COMMENT] || '')).replace(/\s/g, '');
-        if (txt.includes('事務')) {
-            warnIndices.push(i);
+        // Check for 'Office' ambiguity only if not forced
+        if (!row._forceType) {
+            const txt = ((row[INPUT_COL.SUBJECT] || '') + (row[INPUT_COL.CONTENT] || '') + (row[INPUT_COL.COMMENT] || '')).replace(/\s/g, '');
+            if (txt.includes('事務')) {
+                warnIndices.push(i);
+            }
         }
     });
 
@@ -118,6 +156,9 @@ export const transformData = (
 
     const weeklyStats: Record<string, Record<string, Set<string>>> = {};
     const teachersWithData = new Set<string>();
+    let currentSessionStudents = 0;
+    let currentSessionIsSpecial = false;
+
 
     // First pass: Build stats
     sortedData.forEach(row => {
@@ -126,7 +167,7 @@ export const transformData = (
         teachersWithData.add(t);
 
         if (!teacherStats[t]) {
-            teacherStats[t] = { '1:2': 0, 'group': 0, 'office': 0, 'english': 0, days: new Set(), count_individual: 0 };
+            teacherStats[t] = { '1:2': 0, 'group': 0, 'office': 0, 'english': 0, 'sp_12': 0, 'sp_11': 0, days: new Set(), count_individual: 0 };
         }
         if (!weeklyStats[t]) weeklyStats[t] = {};
 
@@ -147,17 +188,30 @@ export const transformData = (
     for (let i = 0; i < sortedData.length; i++) {
         const row = sortedData[i];
         if (!row[INPUT_COL.TEACHER]) continue;
+        currentSessionStudents++;
 
         const t = row[INPUT_COL.TEACHER];
         const sTime = formatDate(row[INPUT_COL.START_TIME]);
         const eTime = formatDate(row[INPUT_COL.END_TIME]);
-        const dur = parseInt(row[INPUT_COL.DURATION]) || 0;
+
+        // Recalculate duration for manually fixed records, otherwise use original
+        let dur = parseInt(row[INPUT_COL.DURATION]) || 0;
+        if (row._isManuallyFixed && row[INPUT_COL.START_TIME] && row[INPUT_COL.END_TIME]) {
+            const startDt = new Date(row[INPUT_COL.START_TIME]);
+            const endDt = new Date(row[INPUT_COL.END_TIME]);
+            dur = Math.round((endDt.getTime() - startDt.getTime()) / 60000); // Convert ms to minutes
+        }
         let subj = row[INPUT_COL.SUBJECT] || '';
 
         const cont = row[INPUT_COL.CONTENT] || '';
         const comm = row[INPUT_COL.COMMENT] || '';
         if (subj.includes('英会話レッスン')) {
             if (cont.trim()) subj = cont; else if (comm.trim()) subj = comm;
+        }
+
+        // Check if current row is special and update session flag
+        if (row._forceSpecial === true || row[INPUT_COL.TYPE]?.includes('特能')) {
+            currentSessionIsSpecial = true;
         }
 
         const nextRow = sortedData[i + 1];
@@ -182,21 +236,46 @@ export const transformData = (
         }
 
         let v12: number | string = '';
+        let vSp12: number | string = '';
+        let vSp11: number | string = '';
         let vGr: number | string = '';
         let vEn: number | string = '';
         let vOf: number | string = '';
 
         if (isLastOfSession) {
             let type = "english";
+            const sessionCount = currentSessionStudents;
+            const isSessionSpecial = currentSessionIsSpecial;
+
+            currentSessionStudents = 0; // Reset for next session
+            currentSessionIsSpecial = false; // Reset
+
             if (row._forceType === 'office') type = "office";
             else if (row._forceType === 'lesson') {
+                // Check Special Rules First
+                // Update: Now we rely on _forceSpecial flag set via review modal
+                // But if we want to keep auto-matching without review as a default or preview?
+                // User said "Confirm one by one". So we should strictly trust _forceSpecial if present.
+                // Or maybe we treat unconfirmed matches as normal?
+                // Logic: If _forceSpecial is true -> use it.
+                // If specialRules match (but not confirmed/rejected) -> ??
+                // Ideally, until confirmed, it's not special.
+
                 if (dur === 90) type = "group";
+                else if (isSessionSpecial) {
+                    type = (sessionCount >= 2) ? "sp_12" : "sp_11";
+                }
                 else if (!excludedTeachers.includes(t) && (dur === 80 || dur === 60)) type = "1:2";
                 else type = "english";
             } else {
                 if (subj.includes('事務')) type = "office";
                 else if (dur === 90) type = "group";
-                else if (!excludedTeachers.includes(t) && (dur === 80 || dur === 60)) type = "1:2";
+                else {
+                    if (isSessionSpecial) {
+                        type = (sessionCount >= 2) ? "sp_12" : "sp_11";
+                    }
+                    else if (!excludedTeachers.includes(t) && (dur === 80 || dur === 60)) type = "1:2";
+                }
             }
 
             if (type === "office") {
@@ -208,6 +287,20 @@ export const transformData = (
             } else if (type === "1:2") {
                 v12 = dur;
                 teacherStats[t]['1:2'] += dur;
+                teacherStats[t]['count_individual']++;
+                const autoOf = 10;
+                vOf = autoOf;
+                teacherStats[t].office += autoOf;
+            } else if (type === "sp_12") {
+                vSp12 = dur;
+                teacherStats[t]['sp_12'] += dur;
+                teacherStats[t]['count_individual']++;
+                const autoOf = 10;
+                vOf = autoOf;
+                teacherStats[t].office += autoOf;
+            } else if (type === "sp_11") {
+                vSp11 = dur;
+                teacherStats[t]['sp_11'] += dur;
                 teacherStats[t]['count_individual']++;
                 const autoOf = 10;
                 vOf = autoOf;
@@ -236,6 +329,8 @@ export const transformData = (
             '授業開始時間': sTime,
             '授業終了時間': eTime,
             '１：２': v12,
+            '１：２(特能)': vSp12,
+            '１：１(特能）': vSp11,
             '集団指導': vGr,
             '事務作業': vOf,
             '英会話': vEn,
@@ -243,7 +338,8 @@ export const transformData = (
             '週間日数': wCount,
             _isError: (!row[INPUT_COL.START_TIME] || !row[INPUT_COL.END_TIME]),
             _isManuallyFixed: row._isManuallyFixed || false,
-            _classType: row[INPUT_COL.TYPE]
+            _classType: row[INPUT_COL.TYPE],
+            _isSpecial: (row._forceSpecial === true || row[INPUT_COL.TYPE]?.includes('特能'))
         });
     }
 

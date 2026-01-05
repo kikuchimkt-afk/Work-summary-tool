@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+}
+
+/* Force light scrollbars and form elements */
+html,
+body,
+input,
+select,
+textarea,
+datalist {
+  color-scheme: light !important;
+  background-color: white;
+  color: black;
+}
+
 @layer base {
   body {
     @apply bg-gray-50 text-gray-800 font-sans;

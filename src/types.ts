@@ -16,6 +16,8 @@ export interface AttendanceRecord {
     _isError?: boolean;
     _isManuallyFixed?: boolean;
     _forceType?: 'office' | 'lesson';
+    _forceSpecial?: boolean; // If true, treated as special class
+    _specialConfirmed?: boolean; // If true, user confirmed this setting
 
     [key: string]: any;
 }
@@ -25,6 +27,8 @@ export interface TeacherStats {
     'group': number;
     'office': number;
     'english': number;
+    'sp_12': number;
+    'sp_11': number;
     days: Set<string>;
     count_individual: number;
 }
@@ -38,6 +42,8 @@ export interface GeneratedData {
     '授業開始時間': string;
     '授業終了時間': string;
     '１：２': number | string;
+    '１：２(特能)': number | string;
+    '１：１(特能）': number | string;
     '集団指導': number | string;
     '事務作業': number | string;
     '英会話': number | string;
@@ -47,6 +53,19 @@ export interface GeneratedData {
     _isError: boolean;
     _isManuallyFixed: boolean;
     _classType?: string;
+
+    // Calculated special fields
+    sp_12?: number;
+    sp_11?: number;
+    _isSpecial?: boolean;
 }
 
 export type ThemeType = 'modern' | 'minimal' | 'standard';
+
+export interface SpecialClassRule {
+    id: string;
+    student: string;
+    teacher: string;
+    subject: string;
+}
+

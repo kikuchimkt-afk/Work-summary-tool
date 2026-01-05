@@ -21,7 +21,26 @@ export const FixDataModal: React.FC<FixDataModalProps> = ({
 
     useEffect(() => {
         if (isOpen) {
-            setLocalData(JSON.parse(JSON.stringify(data)));
+            const newData = JSON.parse(JSON.stringify(data));
+
+            // Auto-fill estimated times for errors
+            errorIndices.forEach(idx => {
+                const r = newData[idx];
+                const d = parseInt(r[INPUT_COL.DURATION]) || 80;
+                const s = r[INPUT_COL.START_TIME];
+                const e = r[INPUT_COL.END_TIME];
+
+                if (s && !e) {
+                    newData[idx][INPUT_COL.END_TIME] = addMin(s, d);
+                    newData[idx]._isManuallyFixed = true;
+                } else if (!s && e) {
+                    newData[idx][INPUT_COL.START_TIME] = subMin(e, d);
+                    newData[idx]._isManuallyFixed = true;
+                }
+            });
+
+            setLocalData(newData);
+
             if (errorIndices.length > 0) setActiveTab('time');
             else if (warnIndices.length > 0) setActiveTab('office');
         }
@@ -49,10 +68,16 @@ export const FixDataModal: React.FC<FixDataModalProps> = ({
         const newData = [...localData];
         if (value) newData[idx]._forceType = value;
         else delete newData[idx]._forceType;
+        newData[idx]._isManuallyFixed = true; // Mark as manually fixed
         setLocalData(newData);
     };
 
-    const applyFixes = () => {
+    const handleSaveOnly = () => {
+        onApply(localData);
+        // Do not close
+    };
+
+    const handleSaveAndClose = () => {
         onApply(localData);
         onClose();
     };
@@ -146,6 +171,13 @@ export const FixDataModal: React.FC<FixDataModalProps> = ({
                                     </tbody>
                                 </table>
                             )}
+                            {errorIndices.length > 0 && (
+                                <div className="mt-4 flex justify-end">
+                                    <button onClick={handleSaveOnly} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">
+                                        時間修正を適用
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -203,6 +235,13 @@ export const FixDataModal: React.FC<FixDataModalProps> = ({
                                     </tbody>
                                 </table>
                             )}
+                            {warnIndices.length > 0 && (
+                                <div className="mt-4 flex justify-end">
+                                    <button onClick={handleSaveOnly} className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm font-bold shadow-sm transition">
+                                        判定修正を適用
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -210,7 +249,7 @@ export const FixDataModal: React.FC<FixDataModalProps> = ({
                 {/* Footer */}
                 <div className="px-6 py-4 border-t border-gray-200 bg-white flex justify-end gap-3 rounded-b-lg">
                     <button onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-50 text-sm transition">キャンセル</button>
-                    <button onClick={applyFixes} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">
+                    <button onClick={handleSaveAndClose} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">
                         修正を適用して再集計
                     </button>
                 </div>

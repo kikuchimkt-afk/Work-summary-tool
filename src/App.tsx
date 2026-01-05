@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { Settings } from 'lucide-react';
-import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType } from './types';
+import { Settings, AlertTriangle, CheckCircle } from 'lucide-react';
+import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType, SpecialClassRule } from './types';
 import { parseCSV, INPUT_COL } from './utils/parser';
 import { transformData, checkDataQuality, DEFAULT_TEACHER_ORDER, sortData } from './utils/transformer';
-import { exportToExcel, OUTPUT_HEADER } from './utils/exporter';
+import { exportToExcel, DATA_KEYS } from './utils/exporter';
 import { DropZone } from './components/DropZone';
 import { TeacherConfig } from './components/TeacherConfig';
 import { Dashboard } from './components/Dashboard';
 import { FixDataModal } from './components/FixDataModal';
+import type { SpecialCandidate } from './components/SpecialCandidateList';
 
 function App() {
   // State
@@ -19,12 +20,15 @@ function App() {
   // Config
   const [sortOrder, setSortOrder] = useState<string[]>([]);
   const [excludedTeachers, setExcludedTeachers] = useState<string[]>([]);
+  const [specialRules, setSpecialRules] = useState<SpecialClassRule[]>([]);
   const [theme, setTheme] = useState<ThemeType>('modern');
+  const [sheetComments, setSheetComments] = useState<Record<string, string>>({});
 
   // UI State
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfig, setShowConfig] = useState(true); // Always show initially
   const [showModal, setShowModal] = useState(false);
+  const [specialCandidates, setSpecialCandidates] = useState<SpecialCandidate[]>([]);
   const [errorIndices, setErrorIndices] = useState<number[]>([]);
   const [warnIndices, setWarnIndices] = useState<number[]>([]);
   const [msg, setMsg] = useState<{ type: 'info' | 'error' | 'success', text: string } | null>(null);
@@ -41,6 +45,12 @@ function App() {
 
       const savedTheme = localStorage.getItem('schedule_theme');
       if (savedTheme) setTheme(savedTheme as ThemeType);
+
+      const savedRules = localStorage.getItem('schedule_special_rules');
+      if (savedRules) setSpecialRules(JSON.parse(savedRules));
+
+      const savedComments = localStorage.getItem('schedule_comments');
+      if (savedComments) setSheetComments(JSON.parse(savedComments));
 
     } catch (e) {
       console.error("Failed to load config", e);
@@ -61,13 +71,21 @@ function App() {
     localStorage.setItem('schedule_theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    localStorage.setItem('schedule_special_rules', JSON.stringify(specialRules));
+  }, [specialRules]);
+
+  useEffect(() => {
+    localStorage.setItem('schedule_comments', JSON.stringify(sheetComments));
+  }, [sheetComments]);
+
   // Re-transform when config changes if we have data
   useEffect(() => {
     if (rawRecords.length > 0) {
       const timer = setTimeout(() => processTransformation(rawRecords, true), 100);
       return () => clearTimeout(timer);
     }
-  }, [excludedTeachers, sortOrder]);
+  }, [excludedTeachers, sortOrder, specialRules]);
 
 
   const handleFileSelect = async (file: File, encoding: string) => {
@@ -110,6 +128,7 @@ function App() {
         setShowModal(true);
         setIsProcessing(false);
       } else {
+        // Initial transform
         processTransformation(data);
         setMsg({ type: 'success', text: `読み込み完了: ${data.length}行` });
       }
@@ -149,16 +168,23 @@ function App() {
 
   const handleModalApply = (updatedData: AttendanceRecord[]) => {
     setRawRecords(updatedData);
+
+    // Re-check quality to update warnings/errors in the modal
+    const { errorIndices: errs, warnIndices: warns } = checkDataQuality(updatedData);
+    setErrorIndices(errs);
+    setWarnIndices(warns);
+
     processTransformation(updatedData);
   };
 
   const handleDownloadExcel = () => {
-    exportToExcel(generatedData, teacherStats, sortOrder, theme);
+    exportToExcel(generatedData, teacherStats, sortOrder, theme, sheetComments); // Pass comments
   };
 
   const handleDownloadCsv = () => {
     const clean = generatedData.map(({ _isError, _isManuallyFixed, _classType, ...r }) => r);
-    const csv = Papa.unparse({ fields: OUTPUT_HEADER, data: clean });
+    // @ts-ignore
+    const csv = Papa.unparse({ fields: [...DATA_KEYS], data: clean });
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '勤務集計.csv'; a.click();
   };
@@ -167,12 +193,7 @@ function App() {
     alert("テンプレートダウンロードは実装中です。");
   };
 
-  const handleResetSort = () => {
-    if (window.confirm('講師の並び順を初期化しますか？')) {
-      setSortOrder([...DEFAULT_TEACHER_ORDER]);
-    }
-  };
-
+  // Restore handleImportTeachers
   const handleImportTeachers = () => {
     if (rawRecords.length === 0) {
       alert('先にCSVファイルを読み込んでください。');
@@ -188,7 +209,160 @@ function App() {
       }
     });
     if (changed) setSortOrder(updatedSort);
-  }
+  };
+
+  const toggleExclude = (name: string) => {
+    setExcludedTeachers(prev =>
+      prev.includes(name) ? prev.filter(t => t !== name) : [...prev, name]
+    );
+  };
+
+  // Special Rules Workflow
+  const handleScanRules = () => {
+    if (rawRecords.length === 0 || specialRules.length === 0) return;
+    const candidates: { record: AttendanceRecord, index: number, rule: string }[] = [];
+
+    setIsProcessing(true); // Show analyzing state (if desired, or use msg)
+    setMsg({ type: 'info', text: '解析中...' });
+
+    // Use setTimeout to allow UI update
+    setTimeout(() => {
+      try {
+        rawRecords.forEach((row, i) => {
+          if (row._specialConfirmed) return; // Already checked
+
+          const t = row[INPUT_COL.TEACHER] || '';
+          const s = row[INPUT_COL.STUDENT_NAME] || '';
+          const sub = row[INPUT_COL.SUBJECT] || '';
+
+          const match = specialRules.find(r =>
+            (t.includes(r.teacher) || r.teacher === t) &&
+            (s.includes(r.student) || s === r.student) &&
+            (sub.includes(r.subject) || sub === r.subject)
+          );
+
+          if (match) {
+            candidates.push({ record: row, index: i, rule: `${match.student} - ${match.teacher} - ${match.subject}` });
+          }
+        });
+
+        if (candidates.length > 0) {
+          setSpecialCandidates(candidates);
+          // Auto-shown via list component
+        } else {
+          alert("新規に適用する特能授業は見つかりませんでした。");
+        }
+      } finally {
+        setIsProcessing(false);
+        setMsg(null);
+      }
+    }, 100);
+  };
+
+  const handleConfirmSpecial = (results: { index: number, isSpecial: boolean }[]) => {
+    const newData = [...rawRecords];
+    const processedIndices = new Set<number>();
+
+    results.forEach(({ index, isSpecial }) => {
+      newData[index] = { ...newData[index], _specialConfirmed: true, _forceSpecial: isSpecial };
+      processedIndices.add(index);
+    });
+
+    setRawRecords(newData);
+    setSpecialCandidates(prev => prev.filter(c => !processedIndices.has(c.index)));
+    processTransformation(newData, true);
+  };
+
+
+  const DEFAULT_TEACHER_ORDER = [
+    "吉川講師", "島田講師", "久保講師", "岸本講師", "岡講師", "三井講師",
+    "長井講師", "千種講師", "田頭講師", "永岡講師", "山田講師",
+    "大串講師", "高畠講師", "篠原講師"
+  ];
+
+  // Helper to sort teachers
+  const compareTeachers = (a: string, b: string) => {
+    // Normalization to handle potential whitespace differences
+    const normA = a.replace(/\s+/g, '');
+    const normB = b.replace(/\s+/g, '');
+
+    // Create base list from defaults (remove '講師' to match surnames)
+    const defaultBases = DEFAULT_TEACHER_ORDER.map(t => t.replace(/\s+/g, '').replace('講師', ''));
+
+    const getRank = (name: string) => {
+      const idx = defaultBases.findIndex(base => name.startsWith(base));
+      return idx === -1 ? 9999 : idx;
+    };
+
+    const rankA = getRank(normA);
+    const rankB = getRank(normB);
+
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b, 'ja');
+  };
+
+  // Helper to sort students by grade (extract Grade from raw record if possible, but here we only have strings)
+  // We need to look up the grade for the student.
+  const getStudentGrade = (name: string) => {
+    const rec = rawRecords.find(r => r[INPUT_COL.STUDENT_NAME] === name);
+    return rec ? rec[INPUT_COL.GRADE] : '';
+  };
+
+  const compareGrades = (g1: string, g2: string) => {
+    const gradeOrder = ['中1', '中2', '中3', '高1', '高2', '高3'];
+    const i1 = gradeOrder.indexOf(g1);
+    const i2 = gradeOrder.indexOf(g2);
+    if (i1 !== -1 && i2 !== -1) return i1 - i2;
+    if (i1 !== -1) return -1;
+    if (i2 !== -1) return 1;
+    return g1.localeCompare(g2, 'ja');
+  };
+
+  // Calculate distinct lists for autosuggest
+  const distinctTeachers = Array.from(new Set(rawRecords.map(r => r[INPUT_COL.TEACHER]).filter(Boolean))).sort(compareTeachers);
+
+  const distinctStudents = (() => {
+    const rawList = Array.from(new Set(rawRecords.map(r => r[INPUT_COL.STUDENT_NAME]).filter(Boolean))).sort((a, b) => {
+      const gA = getStudentGrade(a);
+      const gB = getStudentGrade(b);
+      // Sort by Grade first, then Name
+      const gradeDiff = compareGrades(gA, gB);
+      if (gradeDiff !== 0) return gradeDiff;
+      return a.localeCompare(b, 'ja');
+    });
+
+    const result: string[] = [];
+    let lastGrade = '';
+    rawList.forEach(student => {
+      const grade = getStudentGrade(student);
+      if (grade && grade !== lastGrade) {
+        if (lastGrade !== '') {
+          // Add separator
+          result.push(`--- ${grade} ---`);
+        } else {
+          // First Header? Optional
+          result.push(`--- ${grade} ---`);
+        }
+        lastGrade = grade;
+      }
+      result.push(student);
+    });
+    return result;
+  })();
+
+  const distinctSubjects = Array.from(new Set(rawRecords.map(r => r[INPUT_COL.SUBJECT]).filter(Boolean))).sort();
+
+  // Handle Reset Sort to Default
+  const handleResetSort = () => {
+    if (rawRecords.length === 0) {
+      alert("CSVデータがありません");
+      return;
+    }
+    const currentTeachers = Array.from(new Set(rawRecords.map(r => r[INPUT_COL.TEACHER]).filter(Boolean)));
+    const sorted = currentTeachers.sort(compareTeachers);
+    setSortOrder(sorted);
+  };
+
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800 font-sans">
@@ -218,11 +392,28 @@ function App() {
         {showConfig && (
           <section className="animate-in slide-in-from-top-4 duration-300">
             <TeacherConfig
-              sortOrder={sortOrder} setSortOrder={setSortOrder}
-              excludedTeachers={excludedTeachers} setExcludedTeachers={setExcludedTeachers}
-              currentTheme={theme} setTheme={setTheme}
-              onResetSort={handleResetSort}
+              teachers={sortOrder}
+              excludedTeachers={excludedTeachers}
+              onToggleExclude={toggleExclude}
+              onUpdateOrder={setSortOrder}
+              specialRules={specialRules}
+              onUpdateRules={setSpecialRules}
               onImportTeachers={handleImportTeachers}
+              candidates={specialCandidates}
+              onConfirmCandidates={handleConfirmSpecial}
+              onDismissCandidates={() => setSpecialCandidates([])}
+              sheetComments={sheetComments}
+              onUpdateComments={setSheetComments}
+              onScanRules={handleScanRules}
+              onResetSort={handleResetSort}
+              teacherOptions={distinctTeachers}
+              studentOptions={distinctStudents}
+              subjectOptions={distinctSubjects}
+              rawRecords={rawRecords}
+              onUpdateRecords={(newData: AttendanceRecord[]) => {
+                setRawRecords(newData);
+                processTransformation(newData, true); // Recalculate stats
+              }}
             />
           </section>
         )}
@@ -237,6 +428,21 @@ function App() {
             <div className="mb-4 flex justify-between items-center">
               <button onClick={() => { setGeneratedData([]); setRawRecords([]); }} className="text-sm text-gray-500 hover:text-gray-700 underline">
                 ← ファイル選択に戻る
+              </button>
+
+              <button
+                onClick={() => setShowModal(true)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm border ${(errorIndices.length > 0 || warnIndices.length > 0)
+                  ? 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex gap-1">
+                  {errorIndices.length > 0 && <span className="text-red-600 flex items-center gap-0.5"><AlertTriangle size={14} /> {errorIndices.length}</span>}
+                  {warnIndices.length > 0 && <span className="text-yellow-600 flex items-center gap-0.5"><AlertTriangle size={14} /> {warnIndices.length}</span>}
+                  {errorIndices.length === 0 && warnIndices.length === 0 && <CheckCircle size={14} className="text-green-500" />}
+                </div>
+                デー タ確認・修正
               </button>
             </div>
             <Dashboard
