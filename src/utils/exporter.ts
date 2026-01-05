@@ -30,7 +30,7 @@ interface StyleSet {
     bgRed: { fgColor: { rgb: "F2DCDB" } };
 }
 
-const getStyleSet = (theme: ThemeType): StyleSet => {
+const getStyleSet = (_theme: ThemeType): StyleSet => {
     // We can customize based on theme string if needed
     // Defaulting to requested dark blue style
     const black = { rgb: "000000" };
@@ -158,7 +158,7 @@ const applySheetStyles = (ws: any, dataArray: any[], styles: StyleSet, isSummary
     }
 };
 
-const getColWidths = (data: any[]) => {
+const getColWidths = (_data: any[]) => {
     return [
         { wch: 15 }, // Name
         { wch: 15 }, // Kana
@@ -178,7 +178,7 @@ export const exportToExcel = (
     teacherStats: Record<string, TeacherStats>,
     sortOrder: string[],
     theme: ThemeType,
-    sheetComments: Record<string, string>
+    _sheetComments: Record<string, string>
 ) => {
     const wb = XLSX.utils.book_new();
 
@@ -254,7 +254,7 @@ export const exportToExcel = (
 
         // Insert Separators & Layout
         const rows: any[] = [];
-        const stats = teacherStats[teacher];
+        // Stats now calculated via formulas in Excel, no static values needed
 
         // Row 1 (Index 0): Name
         rows.push([`${teacher}講師`]);
@@ -301,7 +301,7 @@ export const exportToExcel = (
 
         // Row 10 (Index 9): Main Header
         rows.push(DISPLAY_HEADER);
-        const tHeadR = 9;
+        // Header is at row index 9 (Row 10 in Excel)
 
 
         // Helper to check same week

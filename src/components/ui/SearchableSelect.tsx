@@ -21,12 +21,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     // Simply filtering separators out if they don't match is bad UX.
     // For now, simple includes filter, but let's be smart about separators.
 
-    // Actually, simple filtering:
-    const filteredOptions = options.filter(opt => {
-        if (opt.startsWith('---')) return true; // Keep headers for context (or filter them if adjacent ones?)
-        // Better: standard filter
-        return opt.toLowerCase().includes(searchTerm.toLowerCase());
-    });
+    // Filtering logic moved to displayOptions below
 
     // Cleanup separators: Remove separators that have no children following them or are adjacent to other separators?
     // That's complex. Let's just fitler normal items. Headers keep if they match OR if we are showing all?

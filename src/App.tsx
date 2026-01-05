@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { Settings, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType, SpecialClassRule } from './types';
 import { parseCSV, INPUT_COL } from './utils/parser';
-import { transformData, checkDataQuality, DEFAULT_TEACHER_ORDER, sortData } from './utils/transformer';
+import { transformData, checkDataQuality, sortData } from './utils/transformer';
 import { exportToExcel, DATA_KEYS } from './utils/exporter';
 import { DropZone } from './components/DropZone';
 import { TeacherConfig } from './components/TeacherConfig';
