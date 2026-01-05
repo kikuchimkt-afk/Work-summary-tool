@@ -254,7 +254,7 @@ export const exportToExcel = (
 
         // Insert Separators & Layout
         const rows: any[] = [];
-        // Stats now calculated via formulas in Excel, no static values needed
+        const stats = teacherStats[teacher];
 
         // Row 1 (Index 0): Name
         rows.push([`${teacher}講師`]);
@@ -283,9 +283,8 @@ export const exportToExcel = (
         );
         rows.push(r4);
 
-        // Row 5 (Index 4): Days stats - Use SUMPRODUCT to count unique dates from Start Time column (F)
-        // Formula counts unique non-empty date values
-        rows.push(['月間勤務日数', '', { f: `SUMPRODUCT((F11:F1000<>"")/COUNTIF(F11:F1000,F11:F1000&""))&" 日"` }]);
+        // Row 5 (Index 4): Days stats - Static value from transformer (unique dates)
+        rows.push(['月間勤務日数', '', `${stats.days.size} 日`]);
 
         // Row 6 (Index 5): Count stats - Count individual lessons (non-empty cells in H, I, J columns)
         rows.push(['個別授業回数', '', { f: `(COUNTIF(H11:H1000,">0")+COUNTIF(I11:I1000,">0")+COUNTIF(J11:J1000,">0"))&" 回"` }]);
