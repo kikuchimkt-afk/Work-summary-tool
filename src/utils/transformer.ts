@@ -29,8 +29,12 @@ export const getWeekKey = (d: string | undefined): number | null => {
     const dt = new Date(d);
     if (isNaN(dt.getTime())) return null;
     dt.setHours(0, 0, 0, 0);
-    // Calculate start of week (Sunday)
-    dt.setDate(dt.getDate() - dt.getDay());
+    // Calculate start of week (Monday)
+    // getDay() returns 0 for Sunday, 1 for Monday, ..., 6 for Saturday
+    // For Monday-Sunday week: Monday=0, Tuesday=1, ..., Sunday=6
+    const dayOfWeek = dt.getDay();
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday becomes 6, Monday becomes 0
+    dt.setDate(dt.getDate() - daysFromMonday);
     return dt.getTime();
 };
 
