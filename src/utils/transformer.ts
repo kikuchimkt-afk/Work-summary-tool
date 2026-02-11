@@ -171,7 +171,7 @@ export const transformData = (
         teachersWithData.add(t);
 
         if (!teacherStats[t]) {
-            teacherStats[t] = { '1:2': 0, 'group': 0, 'office': 0, 'english': 0, 'sp_12': 0, 'sp_11': 0, days: new Set(), count_individual: 0 };
+            teacherStats[t] = { '1:2': 0, 'group': 0, 'office': 0, 'english': 0, 'sp_12': 0, 'sp_11': 0, days: new Set(), count_individual: 0, count_special: 0 };
         }
         if (!weeklyStats[t]) weeklyStats[t] = {};
 
@@ -299,6 +299,7 @@ export const transformData = (
                 vSp12 = dur;
                 teacherStats[t]['sp_12'] += dur;
                 teacherStats[t]['count_individual']++;
+                teacherStats[t]['count_special']++;
                 const autoOf = 10;
                 vOf = autoOf;
                 teacherStats[t].office += autoOf;
@@ -306,6 +307,7 @@ export const transformData = (
                 vSp11 = dur;
                 teacherStats[t]['sp_11'] += dur;
                 teacherStats[t]['count_individual']++;
+                teacherStats[t]['count_special']++;
                 const autoOf = 10;
                 vOf = autoOf;
                 teacherStats[t].office += autoOf;

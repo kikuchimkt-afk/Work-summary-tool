@@ -36,6 +36,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const totalGroup = Object.values(data).reduce((sum, d) => sum + d.group, 0);
     const totalOffice = Object.values(data).reduce((sum, d) => sum + d.office, 0);
     const totalEnglish = Object.values(data).reduce((sum, d) => sum + d.english, 0);
+    const totalCountIndividual = Object.values(data).reduce((sum, d) => sum + d.count_individual, 0);
+    const totalCountSpecial = Object.values(data).reduce((sum, d) => sum + (d.count_special || 0), 0);
+    const totalSpecialRatio = totalCountIndividual > 0
+        ? ((totalCountSpecial / totalCountIndividual) * 100).toFixed(1) + '%'
+        : '-';
 
 
     return (
@@ -86,6 +91,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     <th className="px-3 py-2 text-right font-medium text-gray-500">集団</th>
                                     <th className="px-3 py-2 text-right font-medium text-gray-500">事務</th>
                                     <th className="px-3 py-2 text-right font-medium text-gray-500">英会話</th>
+                                    <th className="px-3 py-2 text-right font-medium text-gray-500">特能率</th>
                                     <th className="px-3 py-2 text-right font-medium text-gray-500">勤務日数</th>
                                     <th className="px-3 py-2 text-right font-medium text-gray-500">個別回数</th>
                                 </tr>
@@ -93,6 +99,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <tbody className="divide-y divide-gray-200 bg-white">
                                 {sortedTeachers.map(t => {
                                     const s = teacherStats[t];
+                                    const specialRatio = s.count_individual > 0
+                                        ? ((s.count_special / s.count_individual) * 100).toFixed(1) + '%'
+                                        : '-';
                                     return (
                                         <tr key={t}>
                                             <td className="px-3 py-1">{t}</td>
@@ -102,6 +111,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                             <td className="px-3 py-1 text-right">{s['group']}</td>
                                             <td className="px-3 py-1 text-right">{s['office']}</td>
                                             <td className="px-3 py-1 text-right">{s['english']}</td>
+                                            <td className="px-3 py-1 text-right">{specialRatio}</td>
                                             <td className="px-3 py-1 text-right font-bold">{s.days.size}</td>
                                             <td className="px-3 py-1 text-right">{s.count_individual}</td>
                                         </tr>
@@ -116,8 +126,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">{totalGroup}</td>
                                     <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">{totalOffice}</td>
                                     <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">{totalEnglish}</td>
+                                    <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">{totalSpecialRatio}</td>
                                     <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">-</td>
-                                    <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">-</td>
+                                    <td className="px-3 py-1 whitespace-nowrap text-sm text-right text-gray-900">{totalCountIndividual}</td>
                                 </tr>
                             </tbody>
                         </table>

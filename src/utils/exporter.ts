@@ -122,6 +122,7 @@ const applySheetStyles = (ws: any, dataArray: any[], styles: StyleSet, isSummary
                     else if (c === 4) cellStyle.fill = styles.bgGreen;
                     else if (c === 5) cellStyle.fill = styles.bgOrange;
                     else if (c === 6) cellStyle.fill = styles.bgRed;
+                    else if (c === 7) cellStyle.fill = styles.stripeOdd; // Special Ratio - just plain or maybe specific? Let's use stripe
                     else {
                         if (dIdx % 2 === 1) cellStyle.fill = styles.stripeOdd;
                         else cellStyle.fill = styles.stripeEven;
@@ -192,7 +193,7 @@ export const exportToExcel = (
     const fileName = `勤務集計_${monthStr}月分.xlsx`;
 
     // 1. SUMMARY SHEET
-    const summaryHeader = ['講師名', '1:2', '1:2(特能)', '1:1(特能)', '集団指導', '事務作業', '英会話', '勤務日数', '個別授業回数'];
+    const summaryHeader = ['講師名', '1:2', '1:2(特能)', '1:1(特能)', '集団指導', '事務作業', '英会話', '特能率', '勤務日数', '個別授業回数'];
     const summaryRows: any[] = [
         [`${monthStr}月勤務時間集計`],
         summaryHeader
@@ -224,6 +225,7 @@ export const exportToExcel = (
             { f: `${sheetName}!K4` },  // 集団指導
             { f: `${sheetName}!L4` },  // 事務作業
             { f: `${sheetName}!M4` },  // 英会話
+            { f: `IF((COUNTIF(${sheetName}!H11:H1000,">0")+COUNTIF(${sheetName}!I11:I1000,">0")+COUNTIF(${sheetName}!J11:J1000,">0"))=0, 0, (COUNTIF(${sheetName}!I11:I1000,">0")+COUNTIF(${sheetName}!J11:J1000,">0"))/(COUNTIF(${sheetName}!H11:H1000,">0")+COUNTIF(${sheetName}!I11:I1000,">0")+COUNTIF(${sheetName}!J11:J1000,">0")))`, z: '0.0%' }, // 特能率
             { f: `${sheetName}!C5` },  // 勤務日数 (from Row 5, Col C)
             { f: `${sheetName}!C6` }   // 個別授業回数 (from Row 6, Col C)
         ]);
@@ -236,7 +238,7 @@ export const exportToExcel = (
     // Custom Title style
     if (wsSum['A1']) wsSum['A1'].s = { font: { name: 'Meiryo UI', sz: 14, bold: true }, border: { bottom: getStyleSet(theme).borderMedium } };
 
-    wsSum['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
+    wsSum['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
     XLSX.utils.book_append_sheet(wb, wsSum, '集計一覧');
 
 

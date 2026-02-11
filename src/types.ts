@@ -31,6 +31,7 @@ export interface TeacherStats {
     'sp_11': number;
     days: Set<string>;
     count_individual: number;
+    count_special: number;
 }
 
 export interface GeneratedData {
