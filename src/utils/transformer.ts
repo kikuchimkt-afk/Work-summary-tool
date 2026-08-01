@@ -24,6 +24,182 @@ export const formatDate = (d: string | undefined): string => {
     return `${year}/${month}/${date} ${hours}:${minStr}`;
 };
 
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+export const formatDateWithWeekday = (d: string | undefined): string => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return d;
+    const minutes = dt.getMinutes().toString().padStart(2, '0');
+    return `${dt.getFullYear()}/${dt.getMonth() + 1}/${dt.getDate()}(${WEEKDAY_LABELS[dt.getDay()]}) ${dt.getHours()}:${minutes}`;
+};
+
+const parseDate = (value: string | undefined): Date | null => {
+    if (!value?.trim()) return null;
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getEnteredDuration = (row: AttendanceRecord): number | null => {
+    const value = Number.parseInt(row[INPUT_COL.DURATION], 10);
+    return Number.isFinite(value) && value >= 10 && value <= 480 ? value : null;
+};
+
+const getTimestampDuration = (start: Date | null, end: Date | null): number | null => {
+    if (!start || !end) return null;
+    const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    return minutes >= 10 && minutes <= 480 ? minutes : null;
+};
+
+const isImplausibleLessonClock = (start: Date | null, end: Date | null) => {
+    const isOutsideSchoolHours = (value: Date | null) => value !== null && value.getHours() < 7;
+    return isOutsideSchoolHours(start) || isOutsideSchoolHours(end);
+};
+
+export const needsTimeInference = (row: AttendanceRecord): boolean => {
+    const start = parseDate(row[INPUT_COL.START_TIME]);
+    const end = parseDate(row[INPUT_COL.END_TIME]);
+    const enteredDuration = getEnteredDuration(row);
+    const timestampDuration = getTimestampDuration(start, end);
+
+    if (!start || !end || isImplausibleLessonClock(start, end) || !timestampDuration) return true;
+    return enteredDuration !== null && Math.abs(timestampDuration - enteredDuration) > 5;
+};
+
+interface LessonTimePattern {
+    student: string;
+    teacher: string;
+    subject: string;
+    weekday: number;
+    startMinutes: number;
+    endMinutes: number;
+    duration: number;
+    sourceIndex: number;
+}
+
+const normalizeText = (value: string | undefined) => (value ?? '').replace(/[\s\u3000]+/gu, '').trim();
+
+const selectMostCommonPattern = (patterns: LessonTimePattern[]): LessonTimePattern | null => {
+    if (patterns.length === 0) return null;
+    const grouped = new Map<string, { pattern: LessonTimePattern; count: number }>();
+    patterns.forEach(pattern => {
+        const key = `${pattern.startMinutes}:${pattern.endMinutes}`;
+        const existing = grouped.get(key);
+        if (existing) {
+            existing.count += 1;
+            if (pattern.sourceIndex > existing.pattern.sourceIndex) existing.pattern = pattern;
+        } else {
+            grouped.set(key, { pattern, count: 1 });
+        }
+    });
+    return [...grouped.values()]
+        .sort((a, b) => b.count - a.count || b.pattern.sourceIndex - a.pattern.sourceIndex)[0].pattern;
+};
+
+const findLessonTimePattern = (
+    row: AttendanceRecord,
+    baseDate: Date,
+    patterns: LessonTimePattern[]
+): LessonTimePattern | null => {
+    const student = normalizeText(row[INPUT_COL.STUDENT_NAME]);
+    const teacher = normalizeText(row[INPUT_COL.TEACHER]);
+    const subject = normalizeText(row[INPUT_COL.SUBJECT]);
+    const weekday = baseDate.getDay();
+    const criteria: Array<(pattern: LessonTimePattern) => boolean> = [];
+
+    if (subject) {
+        criteria.push(pattern => pattern.student === student && pattern.teacher === teacher && pattern.subject === subject && pattern.weekday === weekday);
+    }
+    criteria.push(
+        pattern => pattern.student === student && pattern.teacher === teacher && pattern.weekday === weekday,
+        pattern => pattern.student === student && pattern.teacher === teacher,
+    );
+    if (subject) {
+        criteria.push(pattern => pattern.student === student && pattern.subject === subject && pattern.weekday === weekday);
+    }
+    criteria.push(
+        pattern => pattern.student === student && pattern.weekday === weekday,
+        pattern => pattern.student === student,
+    );
+
+    for (const matches of criteria) {
+        const selected = selectMostCommonPattern(patterns.filter(matches));
+        if (selected) return selected;
+    }
+    return null;
+};
+
+const combineDateAndMinutes = (baseDate: Date, minutes: number) => {
+    const result = new Date(baseDate);
+    result.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+    return result;
+};
+
+export const inferLessonTimes = (data: AttendanceRecord[]): AttendanceRecord[] => {
+    const patterns: LessonTimePattern[] = [];
+    data.forEach((row, sourceIndex) => {
+        if (needsTimeInference(row)) return;
+        const start = parseDate(row[INPUT_COL.START_TIME]);
+        const end = parseDate(row[INPUT_COL.END_TIME]);
+        const duration = getTimestampDuration(start, end);
+        if (!start || !end || !duration) return;
+        patterns.push({
+            student: normalizeText(row[INPUT_COL.STUDENT_NAME]),
+            teacher: normalizeText(row[INPUT_COL.TEACHER]),
+            subject: normalizeText(row[INPUT_COL.SUBJECT]),
+            weekday: start.getDay(),
+            startMinutes: start.getHours() * 60 + start.getMinutes(),
+            endMinutes: end.getHours() * 60 + end.getMinutes(),
+            duration,
+            sourceIndex,
+        });
+    });
+
+    return data.map(row => {
+        if (!needsTimeInference(row)) return { ...row };
+
+        const start = parseDate(row[INPUT_COL.START_TIME]);
+        const end = parseDate(row[INPUT_COL.END_TIME]);
+        const enteredDuration = getEnteredDuration(row);
+        const implausibleClock = isImplausibleLessonClock(start, end);
+        const usableStart = start && !implausibleClock ? start : null;
+        const baseDate = start ?? end;
+        let inferredStart: Date | null = null;
+        let inferredEnd: Date | null = null;
+        let inferredDuration: number | null = null;
+
+        if (usableStart && !end && enteredDuration) {
+            inferredStart = usableStart;
+            inferredEnd = new Date(usableStart.getTime() + enteredDuration * 60000);
+            inferredDuration = enteredDuration;
+        } else if (!start && end && enteredDuration) {
+            inferredStart = new Date(end.getTime() - enteredDuration * 60000);
+            inferredEnd = end;
+            inferredDuration = enteredDuration;
+        } else if (baseDate) {
+            const pattern = findLessonTimePattern(row, baseDate, patterns);
+            if (pattern) {
+                inferredStart = combineDateAndMinutes(baseDate, pattern.startMinutes);
+                inferredEnd = combineDateAndMinutes(baseDate, pattern.endMinutes);
+                inferredDuration = pattern.duration;
+            } else if (usableStart && enteredDuration) {
+                inferredStart = usableStart;
+                inferredEnd = new Date(usableStart.getTime() + enteredDuration * 60000);
+                inferredDuration = enteredDuration;
+            }
+        }
+
+        if (!inferredStart || !inferredEnd || !inferredDuration) return { ...row };
+        return {
+            ...row,
+            [INPUT_COL.START_TIME]: formatDate(inferredStart.toString()),
+            [INPUT_COL.END_TIME]: formatDate(inferredEnd.toString()),
+            [INPUT_COL.DURATION]: String(inferredDuration),
+            _isTimeEstimated: true,
+        };
+    });
+};
+
 export const getWeekKey = (d: string | undefined): number | null => {
     if (!d) return null;
     const dt = new Date(d);
@@ -133,9 +309,7 @@ export const checkDataQuality = (data: AttendanceRecord[]) => {
     const warnIndices: number[] = [];
 
     data.forEach((row, i) => {
-        const s = row[INPUT_COL.START_TIME];
-        const e = row[INPUT_COL.END_TIME];
-        if (!s || !e || s.trim() === '' || e.trim() === '') {
+        if (needsTimeInference(row)) {
             errorIndices.push(i);
         }
 
@@ -149,6 +323,52 @@ export const checkDataQuality = (data: AttendanceRecord[]) => {
     });
 
     return { errorIndices, warnIndices };
+};
+
+export type SessionWorkType = 'office' | 'group' | '1:2' | 'sp_12' | 'sp_11' | 'english';
+
+export const determineSessionWorkType = (
+    row: AttendanceRecord,
+    duration: number,
+    sessionCount: number,
+    isSessionSpecial: boolean,
+    isNonIndividualTeacher: boolean
+): SessionWorkType => {
+    const classificationText = [
+        row[INPUT_COL.SUBJECT],
+        row[INPUT_COL.TYPE],
+        row[INPUT_COL.CONTENT],
+        row[INPUT_COL.COMMENT],
+    ].filter(Boolean).join(' ').replace(/[\s\u3000]+/gu, '');
+
+    const isOffice = classificationText.includes('事務');
+    const isEnglishConversation = classificationText.includes('英会話');
+    const isGroupLesson = duration === 90 || classificationText.includes('集団') || classificationText.includes('グループ');
+    const isDummyNonIndividualRecord =
+        normalizeText(row[INPUT_COL.STUDENT_NAME]).includes('犬伏さん') ||
+        normalizeText(row[INPUT_COL.GRADE]) === '0歳';
+
+    if (row._forceType === 'office') return 'office';
+
+    // Explicit lesson information always wins over the duration. This prevents
+    // 80-minute conversation or group lessons from being counted as individual.
+    if (isEnglishConversation) return 'english';
+    if (isGroupLesson) return 'group';
+
+    // Teachers registered here remain in the workbook, but never contribute to
+    // the individual-instruction columns. Non-conversation lessons default to group.
+    if (isNonIndividualTeacher || isDummyNonIndividualRecord) return isOffice ? 'office' : 'group';
+
+    if (row._forceType === 'lesson') {
+        if (isSessionSpecial) return sessionCount >= 2 ? 'sp_12' : 'sp_11';
+        if (duration === 80 || duration === 60) return '1:2';
+        return 'english';
+    }
+
+    if (isOffice) return 'office';
+    if (isSessionSpecial) return sessionCount >= 2 ? 'sp_12' : 'sp_11';
+    if (duration === 80 || duration === 60) return '1:2';
+    return 'english';
 };
 
 // Main Transform
@@ -209,6 +429,7 @@ export const transformData = (
 
         const cont = row[INPUT_COL.CONTENT] || '';
         const comm = row[INPUT_COL.COMMENT] || '';
+        const attendanceStatus = row[INPUT_COL.ATTENDANCE] || '';
         if (subj.includes('英会話レッスン')) {
             if (cont.trim()) subj = cont; else if (comm.trim()) subj = comm;
         }
@@ -247,40 +468,19 @@ export const transformData = (
         let vOf: number | string = '';
 
         if (isLastOfSession) {
-            let type = "english";
             const sessionCount = currentSessionStudents;
             const isSessionSpecial = currentSessionIsSpecial;
 
             currentSessionStudents = 0; // Reset for next session
             currentSessionIsSpecial = false; // Reset
 
-            if (row._forceType === 'office') type = "office";
-            else if (row._forceType === 'lesson') {
-                // Check Special Rules First
-                // Update: Now we rely on _forceSpecial flag set via review modal
-                // But if we want to keep auto-matching without review as a default or preview?
-                // User said "Confirm one by one". So we should strictly trust _forceSpecial if present.
-                // Or maybe we treat unconfirmed matches as normal?
-                // Logic: If _forceSpecial is true -> use it.
-                // If specialRules match (but not confirmed/rejected) -> ??
-                // Ideally, until confirmed, it's not special.
-
-                if (dur === 90) type = "group";
-                else if (isSessionSpecial) {
-                    type = (sessionCount >= 2) ? "sp_12" : "sp_11";
-                }
-                else if (!excludedTeachers.includes(t) && (dur === 80 || dur === 60)) type = "1:2";
-                else type = "english";
-            } else {
-                if (subj.includes('事務')) type = "office";
-                else if (dur === 90) type = "group";
-                else {
-                    if (isSessionSpecial) {
-                        type = (sessionCount >= 2) ? "sp_12" : "sp_11";
-                    }
-                    else if (!excludedTeachers.includes(t) && (dur === 80 || dur === 60)) type = "1:2";
-                }
-            }
+            const type = determineSessionWorkType(
+                row,
+                dur,
+                sessionCount,
+                isSessionSpecial,
+                excludedTeachers.includes(t)
+            );
 
             if (type === "office") {
                 vOf = dur;
@@ -344,6 +544,8 @@ export const transformData = (
             '週間日数': wCount,
             _isError: (!row[INPUT_COL.START_TIME] || !row[INPUT_COL.END_TIME]),
             _isManuallyFixed: row._isManuallyFixed || false,
+            _isTimeEstimated: row._isTimeEstimated || false,
+            _isAbsent: attendanceStatus.includes('欠席'),
             _classType: row[INPUT_COL.TYPE],
             _isSpecial: (row._forceSpecial === true || row[INPUT_COL.TYPE]?.includes('特能'))
         });

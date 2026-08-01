@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { AttendanceRecord } from '../types';
 import { INPUT_COL } from '../utils/parser';
-import { addMin, subMin } from '../utils/transformer';
+import { addMin, inferLessonTimes, subMin } from '../utils/transformer';
 import { X, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface FixDataModalProps {
@@ -21,23 +21,7 @@ export const FixDataModal: React.FC<FixDataModalProps> = ({
 
     useEffect(() => {
         if (isOpen) {
-            const newData = JSON.parse(JSON.stringify(data));
-
-            // Auto-fill estimated times for errors
-            errorIndices.forEach(idx => {
-                const r = newData[idx];
-                const d = parseInt(r[INPUT_COL.DURATION]) || 80;
-                const s = r[INPUT_COL.START_TIME];
-                const e = r[INPUT_COL.END_TIME];
-
-                if (s && !e) {
-                    newData[idx][INPUT_COL.END_TIME] = addMin(s, d);
-                    newData[idx]._isManuallyFixed = true;
-                } else if (!s && e) {
-                    newData[idx][INPUT_COL.START_TIME] = subMin(e, d);
-                    newData[idx]._isManuallyFixed = true;
-                }
-            });
+            const newData = inferLessonTimes(JSON.parse(JSON.stringify(data)));
 
             setLocalData(newData);
 

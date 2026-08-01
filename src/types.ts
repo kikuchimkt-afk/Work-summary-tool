@@ -11,10 +11,12 @@ export interface AttendanceRecord {
     '授業内容': string;
     'コメント': string;
     '授業区分'?: string;
+    '出欠状況'?: string;
 
     // Internal fields (generated during processing or fixing)
     _isError?: boolean;
     _isManuallyFixed?: boolean;
+    _isTimeEstimated?: boolean;
     _forceType?: 'office' | 'lesson';
     _forceSpecial?: boolean; // If true, treated as special class
     _specialConfirmed?: boolean; // If true, user confirmed this setting
@@ -53,6 +55,8 @@ export interface GeneratedData {
 
     _isError: boolean;
     _isManuallyFixed: boolean;
+    _isTimeEstimated?: boolean;
+    _isAbsent?: boolean;
     _classType?: string;
 
     // Calculated special fields

@@ -1,6 +1,8 @@
 
 import * as XLSX from 'xlsx-js-style';
 import type { GeneratedData, TeacherStats, ThemeType } from '../types';
+import { applyA4PortraitPrintSettings } from './xlsxPrintSettings';
+import { formatDateWithWeekday } from './transformer';
 
 const HEADER_ORDER = [
     '生徒氏名', 'フリガナ', '講師名', '学年', '年度',
@@ -152,6 +154,14 @@ const applySheetStyles = (ws: any, dataArray: any[], styles: StyleSet, isSummary
                     if (rowObj._isSpecial && c === 0) {
                         cellStyle.fill = { fgColor: { rgb: "FFFF00" } };
                     }
+                    // Absence is an operational alert and takes priority over other name highlights.
+                    if (rowObj._isAbsent && c === 0) {
+                        cellStyle.fill = { fgColor: { rgb: "FCE4D6" } };
+                    }
+                    // Keep automatically estimated times auditable without coloring the entire row.
+                    if (rowObj._isTimeEstimated && (c === 5 || c === 6)) {
+                        cellStyle.font = { ...cellStyle.font, color: { rgb: "C00000" }, bold: false };
+                    }
                 }
             }
             ws[ref].s = cellStyle;
@@ -166,8 +176,8 @@ const getColWidths = (_data: any[]) => {
         { wch: 12 }, // Teacher
         { wch: 6 },  // Grade
         { wch: 6 },  // Year
-        { wch: 18 }, // Start
-        { wch: 18 }, // End
+        { wch: 21 }, // Start (includes weekday)
+        { wch: 21 }, // End (includes weekday)
         { wch: 6 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, // Counts (Group, Office, English - widened)
         { wch: 10 }, // Subject
         { wch: 8 },  // Days
@@ -239,6 +249,7 @@ export const exportToExcel = (
     if (wsSum['A1']) wsSum['A1'].s = { font: { name: 'Meiryo UI', sz: 14, bold: true }, border: { bottom: getStyleSet(theme).borderMedium } };
 
     wsSum['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
+    wsSum['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
     XLSX.utils.book_append_sheet(wb, wsSum, '集計一覧');
 
 
@@ -295,7 +306,7 @@ export const exportToExcel = (
         rows.push([]);
 
         // Row 8 (Index 7): Legend
-        rows.push(['', '凡例: 緑文字=振替 青文字=講習会授業']);
+        rows.push(['', '凡例: 淡いオレンジ=欠席 緑文字=振替 青文字=講習会授業 赤文字=推定時間']);
 
         // Row 9 (Index 8): Empty
         rows.push([]);
@@ -330,8 +341,7 @@ export const exportToExcel = (
 
             const row = DATA_KEYS.map(k => {
                 if (k === '授業開始時間' || k === '授業終了時間') {
-                    const d = new Date(r[k]);
-                    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                    return formatDateWithWeekday(r[k]);
                 }
                 // Check if key exists in GeneratedData, if not (e.g. GeneratedData doesn't have all manual fields?)
                 // Actually GeneratedData extends AttendanceRecord roughly or contains data.
@@ -399,12 +409,20 @@ export const exportToExcel = (
         const cols = getColWidths(records.map(r => r as any));
         cols[13] = { wch: 25 }; // Update Subject Width
         ws['!cols'] = cols;
+        ws['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
 
         XLSX.utils.book_append_sheet(wb, ws, teacher);
     });
 
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const printAreas = wb.SheetNames.map(name => ({
+        name,
+        range: wb.Sheets[name]['!ref'] ?? 'A1'
+    }));
+    const printableWorkbook = applyA4PortraitPrintSettings(new Uint8Array(wbout), printAreas);
+    const printableBuffer = new ArrayBuffer(printableWorkbook.byteLength);
+    new Uint8Array(printableBuffer).set(printableWorkbook);
+    const blob = new Blob([printableBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

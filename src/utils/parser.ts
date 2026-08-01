@@ -13,7 +13,8 @@ export const INPUT_COL = {
     SUBJECT: '科目',
     CONTENT: '授業内容',
     COMMENT: 'コメント',
-    TYPE: '授業区分'
+    TYPE: '授業区分',
+    ATTENDANCE: '出欠状況'
 };
 
 export const parseCSV = (file: File, encoding: string = 'auto'): Promise<AttendanceRecord[]> => {

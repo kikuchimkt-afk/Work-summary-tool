@@ -3,13 +3,52 @@ import Papa from 'papaparse';
 import { Settings, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType, SpecialClassRule } from './types';
 import { parseCSV, INPUT_COL } from './utils/parser';
-import { transformData, checkDataQuality, sortData } from './utils/transformer';
+import { transformData, checkDataQuality, sortData, inferLessonTimes } from './utils/transformer';
 import { exportToExcel, DATA_KEYS } from './utils/exporter';
 import { DropZone } from './components/DropZone';
 import { TeacherConfig } from './components/TeacherConfig';
 import { Dashboard } from './components/Dashboard';
 import { FixDataModal } from './components/FixDataModal';
 import type { SpecialCandidate } from './components/SpecialCandidateList';
+import { ExcelPdfDropZone } from './components/ExcelPdfDropZone';
+
+const getTeacherNames = (records: AttendanceRecord[]): string[] => {
+  const teachers: string[] = [];
+  const seen = new Set<string>();
+
+  records.forEach(record => {
+    const value = record[INPUT_COL.TEACHER];
+    const teacher = typeof value === 'string' ? value.trim() : '';
+    if (teacher && !seen.has(teacher)) {
+      seen.add(teacher);
+      teachers.push(teacher);
+    }
+  });
+
+  return teachers;
+};
+
+const syncTeacherOrder = (previousOrder: string[], currentTeachers: string[]): string[] => {
+  const currentSet = new Set(currentTeachers);
+  const nextOrder: string[] = [];
+  const added = new Set<string>();
+
+  previousOrder.forEach(teacher => {
+    if (currentSet.has(teacher) && !added.has(teacher)) {
+      added.add(teacher);
+      nextOrder.push(teacher);
+    }
+  });
+
+  currentTeachers.forEach(teacher => {
+    if (!added.has(teacher)) {
+      added.add(teacher);
+      nextOrder.push(teacher);
+    }
+  });
+
+  return nextOrder;
+};
 
 function App() {
   // State
@@ -87,6 +126,18 @@ function App() {
     }
   }, [excludedTeachers, sortOrder, specialRules]);
 
+  const syncTeacherSettings = (records: AttendanceRecord[]) => {
+    const currentTeachers = getTeacherNames(records);
+    const currentTeacherSet = new Set(currentTeachers);
+
+    // Keep the manual order for current teachers, add newcomers, and remove
+    // teachers who are not present in the newly imported report.
+    setSortOrder(previousOrder => syncTeacherOrder(previousOrder, currentTeachers));
+    setExcludedTeachers(previousExcluded =>
+      previousExcluded.filter(teacher => currentTeacherSet.has(teacher))
+    );
+  };
+
 
   const handleFileSelect = async (file: File, encoding: string) => {
     setIsProcessing(true);
@@ -95,29 +146,16 @@ function App() {
 
     try {
       console.log('Starting CSV parse for file:', file.name, 'Encoding:', encoding);
-      const data = await parseCSV(file, encoding);
+      const parsedData = await parseCSV(file, encoding);
+      const data = inferLessonTimes(parsedData);
+      const estimatedTimeCount = data.filter(row => row._isTimeEstimated).length;
       console.log('Parsed data rows:', data.length);
       if (data.length > 0) {
         console.log('Detected headers:', Object.keys(data[0]));
       }
 
       setRawRecords(data);
-
-      // Update sort order with new teachers
-      const newTeachers = new Set(data.map(r => r[INPUT_COL.TEACHER]).filter(Boolean));
-      let updatedSort = [...sortOrder];
-      let changed = false;
-
-      newTeachers.forEach(t => {
-        if (!updatedSort.includes(t)) {
-          updatedSort.push(t);
-          changed = true;
-        }
-      });
-
-      if (changed) {
-        setSortOrder(updatedSort);
-      }
+      syncTeacherSettings(data);
 
       // Quality Check
       const { errorIndices: errs, warnIndices: warns } = checkDataQuality(data);
@@ -130,7 +168,8 @@ function App() {
       } else {
         // Initial transform
         processTransformation(data);
-        setMsg({ type: 'success', text: `読み込み完了: ${data.length}行` });
+        const estimateNote = estimatedTimeCount > 0 ? `（授業時間を${estimatedTimeCount}件推定）` : '';
+        setMsg({ type: 'success', text: `読み込み完了: ${data.length}行${estimateNote}` });
       }
 
     } catch (e: any) {
@@ -199,16 +238,7 @@ function App() {
       alert('先にCSVファイルを読み込んでください。');
       return;
     }
-    const newTeachers = new Set(rawRecords.map(r => r[INPUT_COL.TEACHER]).filter(Boolean));
-    let updatedSort = [...sortOrder];
-    let changed = false;
-    newTeachers.forEach(t => {
-      if (!updatedSort.includes(t)) {
-        updatedSort.push(t);
-        changed = true;
-      }
-    });
-    if (changed) setSortOrder(updatedSort);
+    syncTeacherSettings(rawRecords);
   };
 
   const toggleExclude = (name: string) => {
@@ -455,6 +485,8 @@ function App() {
             />
           </section>
         )}
+
+        <ExcelPdfDropZone />
       </main>
 
       <FixDataModal

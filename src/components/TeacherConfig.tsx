@@ -105,7 +105,7 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                     className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'exclude' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                     <UserX size={16} />
-                    除外
+                    個別なし
                     {excludedTeachers.length > 0 && (
                         <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded-full text-xs">{excludedTeachers.length}</span>
                     )}
@@ -179,7 +179,7 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                                                     <div
                                                         ref={provided.innerRef}
                                                         {...provided.draggableProps}
-                                                        className={`flex items - center gap - 3 p - 3 bg - white border rounded shadow - sm ${snapshot.isDragging ? 'shadow-md border-blue-400' : 'border-gray-200'} ${excludedTeachers.includes(teacher) ? 'opacity-50 bg-gray-50' : ''} `}
+                                                        className={`flex items - center gap - 3 p - 3 bg - white border rounded shadow - sm ${snapshot.isDragging ? 'shadow-md border-blue-400' : 'border-gray-200'} `}
                                                     >
                                                         <div {...provided.dragHandleProps} className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
                                                             <GripVertical size={18} />
@@ -187,8 +187,8 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                                                         <span className="flex-1 font-medium text-gray-700">{teacher}</span>
                                                         <button
                                                             onClick={() => onToggleExclude(teacher)}
-                                                            className={`p - 1.5 rounded transition - colors ${excludedTeachers.includes(teacher) ? 'bg-gray-200 text-gray-600' : 'text-gray-400 hover:bg-red-50 hover:text-red-500'} `}
-                                                            title={excludedTeachers.includes(teacher) ? "除外を解除" : "集計から除外"}
+                                                            className={`p - 1.5 rounded transition - colors ${excludedTeachers.includes(teacher) ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:bg-amber-50 hover:text-amber-600'} `}
+                                                            title={excludedTeachers.includes(teacher) ? "個別指導なしを解除" : "個別指導なしに登録"}
                                                         >
                                                             <UserX size={16} />
                                                         </button>
@@ -206,8 +206,8 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
 
                 {activeTab === 'exclude' && (
                     <div className="space-y-4">
-                        <h3 className="font-semibold text-gray-700">除外講師設定</h3>
-                        <p className="text-xs text-gray-500 mb-2">集計から完全に除外したい講師を登録します。退職者や集計不要な講師をここで管理できます。</p>
+                        <h3 className="font-semibold text-gray-700">個別指導をしない講師</h3>
+                        <p className="text-xs text-gray-500 mb-2">登録した講師も集計には残りますが、80分・60分でも個別指導には計上しません。英会話の記載がある授業は英会話へ、それ以外は集団指導へ分類します。「犬伏さん（0歳）」の授業も同じルールで自動判定します。</p>
                         <div className="flex gap-2">
                             <div className="flex-1">
                                 <SearchableSelect
@@ -227,12 +227,12 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                         </div>
                         <div className="space-y-2">
                             {excludedTeachers.length === 0 ? (
-                                <p className="text-sm text-gray-400 text-center py-4">除外設定された講師はいません</p>
+                                <p className="text-sm text-gray-400 text-center py-4">個別指導なしに登録された講師はいません</p>
                             ) : (
                                 excludedTeachers.map(t => (
-                                    <div key={t} className="flex justify-between items-center p-3 bg-red-50 border border-red-100 rounded text-red-700">
+                                    <div key={t} className="flex justify-between items-center p-3 bg-amber-50 border border-amber-100 rounded text-amber-800">
                                         <span>{t}</span>
-                                        <button onClick={() => onToggleExclude(t)} className="p-1 hover:bg-red-200 rounded">
+                                        <button onClick={() => onToggleExclude(t)} className="p-1 hover:bg-amber-200 rounded">
                                             <X size={16} />
                                         </button>
                                     </div>
