@@ -340,6 +340,299 @@ textarea:focus-visible {
   color: var(--gold);
 }
 
+.import-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.comiru-import-card {
+  padding: 22px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  color: #f8f5ee;
+  background:
+    radial-gradient(circle at 100% 0, rgba(184, 155, 97, 0.28), transparent 17rem),
+    linear-gradient(135deg, #173c33, #245247);
+  box-shadow: 0 18px 34px rgba(23, 60, 51, 0.16);
+}
+
+.comiru-import-card::after {
+  content: "01";
+  position: absolute;
+  right: 12px;
+  top: -22px;
+  color: rgba(255, 255, 255, 0.045);
+  font-family: Georgia, serif;
+  font-size: 92px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.comiru-import-heading,
+.comiru-import-controls,
+.extension-setup {
+  position: relative;
+  z-index: 1;
+}
+
+.comiru-import-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comiru-import-title-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.comiru-import-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 13px;
+  color: #f2dfae;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.comiru-import-title-row small {
+  display: block;
+  margin-bottom: 2px;
+  color: #d7bd81;
+  font-family: Georgia, serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+}
+
+.comiru-import-title-row h3 {
+  margin: 0;
+  color: #fffdf7;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.extension-state {
+  min-height: 27px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: #dbe9e2;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.extension-state.is-ready {
+  color: #e9f7ee;
+  border-color: rgba(170, 220, 189, 0.32);
+  background: rgba(111, 177, 136, 0.14);
+}
+
+.extension-state.is-missing {
+  color: #ffe2b8;
+  border-color: rgba(239, 192, 126, 0.31);
+  background: rgba(159, 104, 45, 0.16);
+}
+
+.comiru-import-description {
+  margin: 15px 0 17px;
+  position: relative;
+  z-index: 1;
+  color: rgba(248, 245, 238, 0.74);
+  font-size: 10px;
+  line-height: 1.75;
+}
+
+.comiru-import-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.78fr) minmax(180px, 1.22fr);
+  gap: 10px;
+}
+
+.comiru-import-controls label {
+  height: 48px;
+  padding: 7px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.comiru-import-controls label > span {
+  margin-bottom: 1px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.comiru-import-controls input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: #fffdf7;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.comiru-import-controls input::-webkit-calendar-picker-indicator {
+  opacity: 0.75;
+  filter: invert(1);
+}
+
+.comiru-import-controls > button {
+  min-height: 48px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 12px;
+  color: #1d443a;
+  background: linear-gradient(135deg, #f7edcf, #ddc488);
+  box-shadow: 0 10px 20px rgba(9, 32, 26, 0.2);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: 180ms ease;
+}
+
+.comiru-import-controls > button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 13px 24px rgba(9, 32, 26, 0.25);
+}
+
+.comiru-import-controls > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.comiru-import-status {
+  min-height: 34px;
+  margin-top: 11px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(11, 38, 31, 0.23);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.comiru-import-status > span {
+  flex: 1;
+}
+
+.comiru-import-status.is-success {
+  color: #dcf5e5;
+  border-color: rgba(157, 216, 178, 0.2);
+}
+
+.comiru-import-status.is-error,
+.comiru-import-status.is-missing {
+  color: #ffe6c3;
+  border-color: rgba(241, 192, 127, 0.24);
+}
+
+.comiru-import-status button {
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff5df;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.extension-setup {
+  margin-top: 10px;
+  padding: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(226, 199, 139, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 250, 235, 0.08);
+}
+
+.extension-setup strong {
+  display: block;
+  color: #fff4d6;
+  font-size: 9px;
+}
+
+.extension-setup p {
+  margin: 3px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 7px;
+  line-height: 1.55;
+}
+
+.extension-setup a {
+  min-height: 32px;
+  padding: 0 9px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 9px;
+  color: #fff8e8;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 8px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.import-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #8b9691;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.import-divider::before,
+.import-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: rgba(36, 82, 71, 0.11);
+}
+
 .csv-dropzone {
   min-height: 178px;
   padding: 24px;
@@ -1081,6 +1374,21 @@ textarea:focus-visible {
 
   .hero-benefits {
     flex-direction: column;
+  }
+
+  .comiru-import-heading,
+  .extension-setup {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .comiru-import-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .extension-setup a {
+    width: 100%;
+    justify-content: center;
   }
 
   .csv-dropzone {

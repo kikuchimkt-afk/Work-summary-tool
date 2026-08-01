@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "勤務時間集計 - Comiru CSV連携",
+  "version": "1.0.0",
+  "description": "Comiruの指導報告書を全件読み込み、勤務時間集計アプリへCSVを安全に受け渡します。",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://comiru.jp/*",
+    "https://work-summary-tool.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://work-summary-tool.vercel.app/*"
+      ],
+      "js": [
+        "app-content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://comiru.jp/*"
+      ],
+      "js": [
+        "comiru-content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

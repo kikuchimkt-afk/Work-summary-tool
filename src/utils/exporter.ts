@@ -1,8 +1,14 @@
 
-import * as XLSX from 'xlsx-js-style';
+import * as XLSXImport from 'xlsx-js-style';
 import type { GeneratedData, TeacherStats, ThemeType } from '../types';
 import { applyA4PortraitPrintSettings } from './xlsxPrintSettings';
 import { formatDateWithWeekday } from './transformer';
+
+let XLSX = ((XLSXImport as unknown as { default?: typeof XLSXImport }).default ?? XLSXImport);
+
+export const setXlsxImplementation = (implementation: typeof XLSXImport) => {
+    XLSX = implementation;
+};
 
 const HEADER_ORDER = [
     '生徒氏名', 'フリガナ', '講師名', '学年', '年度',
@@ -184,13 +190,18 @@ const getColWidths = (_data: any[]) => {
     ];
 };
 
-export const exportToExcel = (
+export interface ExcelFileResult {
+    bytes: Uint8Array;
+    fileName: string;
+}
+
+export const buildExcelFile = (
     generatedData: GeneratedData[],
     teacherStats: Record<string, TeacherStats>,
     sortOrder: string[],
     theme: ThemeType,
     _sheetComments: Record<string, string>
-) => {
+): ExcelFileResult => {
     const wb = XLSX.utils.book_new();
 
     // Calculate Global date range for Title / Month
@@ -420,8 +431,19 @@ export const exportToExcel = (
         range: wb.Sheets[name]['!ref'] ?? 'A1'
     }));
     const printableWorkbook = applyA4PortraitPrintSettings(new Uint8Array(wbout), printAreas);
-    const printableBuffer = new ArrayBuffer(printableWorkbook.byteLength);
-    new Uint8Array(printableBuffer).set(printableWorkbook);
+    return { bytes: printableWorkbook, fileName };
+};
+
+export const exportToExcel = (
+    generatedData: GeneratedData[],
+    teacherStats: Record<string, TeacherStats>,
+    sortOrder: string[],
+    theme: ThemeType,
+    sheetComments: Record<string, string>
+) => {
+    const { bytes, fileName } = buildExcelFile(generatedData, teacherStats, sortOrder, theme, sheetComments);
+    const printableBuffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(printableBuffer).set(bytes);
     const blob = new Blob([printableBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

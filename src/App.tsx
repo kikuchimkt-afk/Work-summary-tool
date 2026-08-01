@@ -11,6 +11,7 @@ import { Dashboard } from './components/Dashboard';
 import { FixDataModal } from './components/FixDataModal';
 import type { SpecialCandidate } from './components/SpecialCandidateList';
 import { ExcelPdfDropZone } from './components/ExcelPdfDropZone';
+import { ComiruAutoImport } from './components/ComiruAutoImport';
 import heroImage from './assets/work-summary-hero.png';
 
 const getTeacherNames = (records: AttendanceRecord[]): string[] => {
@@ -477,7 +478,11 @@ function App() {
                   <span><Clock3 size={16} /> 授業時間を自動集計</span>
                 </div>
               </div>
-              <DropZone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+              <div className="import-stack">
+                <ComiruAutoImport onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+                <div className="import-divider" aria-hidden="true"><span>または手動で</span></div>
+                <DropZone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+              </div>
             </div>
 
             <div className="hero-visual">

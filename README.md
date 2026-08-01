@@ -1,73 +1,38 @@
-# React + TypeScript + Vite
+# 勤務時間集計ツール Re:Act
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Comiruの指導報告書CSVから、講師別の勤務時間を集計するWebアプリです。
 
-Currently, two official plugins are available:
+## 主な機能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Comiru指導報告書CSVの読み込み（UTF-8／Shift-JIS自動判定）
+- 授業時刻の推定、欠席表示、個別・集団・英会話・事務時間の分類
+- 講師別シートを含むExcel出力（A4縦・横幅1ページ）
+- 修正済みExcelから講師別PDFを作成し、ZIPで一括保存
+- 専用Chrome拡張によるComiru CSVの自動取得
 
-## React Compiler
+## Comiruから自動取得
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+本番アプリの「Comiruから自動取得」で対象月を選ぶと、専用Chrome拡張が次の処理を行います。
 
-## Expanding the ESLint configuration
+1. 指定期間の指導報告書検索を開く
+2. 「さらに表示」が消えるまで全件を読み込む
+3. 指導報告書をすべて選択する
+4. CSVを取得してダウンロードフォルダへ保存する
+5. CSVを勤務時間集計アプリへ渡し、そのまま集計を開始する
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+初回設定とデータの扱いは [extension/README.md](extension/README.md) を参照してください。
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 開発
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+本番ビルドの確認:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+Chrome拡張の配布ZIPは、`extension`フォルダの内容をまとめて `public/work-summary-comiru-extension.zip` として配置します。
