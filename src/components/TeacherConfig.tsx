@@ -90,19 +90,19 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
     const displayTeachers = teachers;
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[600px]">
+        <div className="config-panel">
             {/* Tab Navigation */}
-            <div className="flex border-b border-gray-200 overflow-x-auto">
+            <div className="config-tabs">
                 <button
                     onClick={() => setActiveTab('sort')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'sort' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'sort' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <Users size={16} />
                     並び順
                 </button>
                 <button
                     onClick={() => setActiveTab('exclude')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'exclude' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'exclude' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <UserX size={16} />
                     個別なし
@@ -112,21 +112,21 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                 </button>
                 <button
                     onClick={() => setActiveTab('rules')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'rules' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'rules' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <Settings2 size={16} />
                     ルール
                 </button>
                 <button
                     onClick={() => setActiveTab('deletions')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'deletions' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'deletions' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <Trash2 size={16} />
                     手動削除
                 </button>
                 <button
                     onClick={() => setActiveTab('candidates')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'candidates' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'candidates' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <ListChecks size={16} />
                     要確認
@@ -137,14 +137,14 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
 
                 <button
                     onClick={() => setActiveTab('applied')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'applied' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'applied' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <ListChecks size={16} />
                     適用済み
                 </button>
                 <button
                     onClick={() => setActiveTab('comments')}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'comments' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === 'comments' ? 'text-emerald-900 border-b-2 border-emerald-800 bg-emerald-50' : 'text-stone-500 hover:bg-stone-50'}`}
                 >
                     <MessageSquare size={16} />
                     コメント

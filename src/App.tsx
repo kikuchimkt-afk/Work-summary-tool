@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { Settings, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Settings, AlertTriangle, CheckCircle, Sparkles, ShieldCheck, Clock3 } from 'lucide-react';
 import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType, SpecialClassRule } from './types';
 import { parseCSV, INPUT_COL } from './utils/parser';
 import { transformData, checkDataQuality, sortData, inferLessonTimes } from './utils/transformer';
@@ -11,6 +11,7 @@ import { Dashboard } from './components/Dashboard';
 import { FixDataModal } from './components/FixDataModal';
 import type { SpecialCandidate } from './components/SpecialCandidateList';
 import { ExcelPdfDropZone } from './components/ExcelPdfDropZone';
+import heroImage from './assets/work-summary-hero.png';
 
 const getTeacherNames = (records: AttendanceRecord[]): string[] => {
   const teachers: string[] = [];
@@ -65,7 +66,7 @@ function App() {
 
   // UI State
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showConfig, setShowConfig] = useState(true); // Always show initially
+  const [showConfig, setShowConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [specialCandidates, setSpecialCandidates] = useState<SpecialCandidate[]>([]);
   const [errorIndices, setErrorIndices] = useState<number[]>([]);
@@ -395,32 +396,45 @@ function App() {
 
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800 font-sans">
-      <header className="bg-gray-800 text-white p-4 shadow-md flex-shrink-0">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            勤務集計ツール Re:Act
-          </h1>
-          <button onClick={() => setShowConfig(!showConfig)} className="text-gray-300 hover:text-white">
-            <Settings className="w-6 h-6" />
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="app-header-inner">
+          <div className="brand-lockup">
+            <div className="brand-mark" aria-hidden="true">R</div>
+            <div>
+              <p className="brand-kicker">Re:Act Operations</p>
+              <h1>勤務時間集計</h1>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className={`config-trigger ${showConfig ? 'is-open' : ''}`}
+            aria-expanded={showConfig}
+            aria-label="集計設定"
+          >
+            <Settings className="w-4 h-4" />
+            <span>集計設定</span>
           </button>
         </div>
       </header>
 
-      <main className="flex-grow p-6 flex flex-col gap-6 max-w-7xl mx-auto w-full">
-
+      <main className="app-main">
         {msg && (
-          <div className={`p-4 rounded-md shadow flex items-center gap-2 ${msg.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+          <div className={`status-banner status-${msg.type}`}>
+            {msg.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
             {msg.text}
           </div>
         )}
 
-        {/* Config Area - Collapsible */}
         {showConfig && (
-          <section className="animate-in slide-in-from-top-4 duration-300">
+          <section className="config-section animate-in slide-in-from-top-4 duration-300">
+            <div className="section-heading compact">
+              <div>
+                <p className="eyebrow">SETTINGS</p>
+                <h2>集計ルールを整える</h2>
+              </div>
+              <p>講師の並び順や個別指導の対象、特能ルールを管理できます。</p>
+            </div>
             <TeacherConfig
               teachers={sortOrder}
               excludedTeachers={excludedTeachers}
@@ -442,37 +456,59 @@ function App() {
               rawRecords={rawRecords}
               onUpdateRecords={(newData: AttendanceRecord[]) => {
                 setRawRecords(newData);
-                processTransformation(newData, true); // Recalculate stats
+                processTransformation(newData, true);
               }}
             />
           </section>
         )}
 
-        {/* Main Action Area */}
         {generatedData.length === 0 ? (
-          <section className="flex-grow flex flex-col justify-center">
-            <DropZone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+          <section className="hero-card">
+            <div className="hero-content">
+              <div className="hero-copy">
+                <p className="eyebrow"><Sparkles size={14} /> MONTHLY WORK SUMMARY</p>
+                <h2>月末の集計を、<br /><span>整える時間へ。</span></h2>
+                <p className="hero-description">
+                  指導報告書を読み込み、勤務時間の確認から講師別Excel・PDFの作成まで。
+                  毎月の作業を、迷いのない流れに整えます。
+                </p>
+                <div className="hero-benefits" aria-label="主な機能">
+                  <span><ShieldCheck size={16} /> 入力ミスを確認</span>
+                  <span><Clock3 size={16} /> 授業時間を自動集計</span>
+                </div>
+              </div>
+              <DropZone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+            </div>
+
+            <div className="hero-visual">
+              <img src={heroImage} alt="整然としたデスクで勤務表を確認する様子" />
+              <div className="hero-photo-shade" />
+              <div className="hero-photo-note">
+                <span className="note-icon"><CheckCircle size={16} /></span>
+                <div>
+                  <small>READY WHEN YOU ARE</small>
+                  <strong>CSVひとつで、集計を開始</strong>
+                </div>
+              </div>
+            </div>
           </section>
         ) : (
-          <section className="flex-grow flex flex-col animate-in fade-in duration-500">
-            <div className="mb-4 flex justify-between items-center">
-              <button onClick={() => { setGeneratedData([]); setRawRecords([]); }} className="text-sm text-gray-500 hover:text-gray-700 underline">
-                ← ファイル選択に戻る
+          <section className="results-section animate-in fade-in duration-500">
+            <div className="results-toolbar">
+              <button onClick={() => { setGeneratedData([]); setRawRecords([]); }} className="text-link">
+                ← 別のCSVを読み込む
               </button>
 
               <button
                 onClick={() => setShowModal(true)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm border ${(errorIndices.length > 0 || warnIndices.length > 0)
-                  ? 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                  }`}
+                className={`review-button ${(errorIndices.length > 0 || warnIndices.length > 0) ? 'needs-review' : ''}`}
               >
-                <div className="flex gap-1">
+                <span className="flex gap-1">
                   {errorIndices.length > 0 && <span className="text-red-600 flex items-center gap-0.5"><AlertTriangle size={14} /> {errorIndices.length}</span>}
-                  {warnIndices.length > 0 && <span className="text-yellow-600 flex items-center gap-0.5"><AlertTriangle size={14} /> {warnIndices.length}</span>}
-                  {errorIndices.length === 0 && warnIndices.length === 0 && <CheckCircle size={14} className="text-green-500" />}
-                </div>
-                デー タ確認・修正
+                  {warnIndices.length > 0 && <span className="text-amber-600 flex items-center gap-0.5"><AlertTriangle size={14} /> {warnIndices.length}</span>}
+                  {errorIndices.length === 0 && warnIndices.length === 0 && <CheckCircle size={15} className="text-emerald-600" />}
+                </span>
+                データを確認・修正
               </button>
             </div>
             <Dashboard
@@ -488,6 +524,11 @@ function App() {
 
         <ExcelPdfDropZone />
       </main>
+
+      <footer className="app-footer">
+        <span>Re:Act</span>
+        <p>月次業務を、正確に、心地よく。</p>
+      </footer>
 
       <FixDataModal
         isOpen={showModal}

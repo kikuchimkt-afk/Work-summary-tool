@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GeneratedData, TeacherStats } from '../types';
-import { Download } from 'lucide-react';
+import { Download, FileSpreadsheet } from 'lucide-react';
 
 interface DashboardProps {
     generatedData: GeneratedData[];
@@ -44,45 +44,48 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
     return (
-        <div className="bg-white rounded-lg shadow border border-gray-200 flex flex-col h-[800px] w-full max-w-7xl mx-auto">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h2 className="font-bold text-gray-700 flex items-center gap-2">
-                    集計結果プレビュー
-                    <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">更新済み</span>
-                </h2>
-                <div className="flex gap-2">
-                    <button onClick={onDownloadTemplate} className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold py-2 px-4 rounded shadow transition">
+        <div className="dashboard-panel">
+            <div className="dashboard-head">
+                <div className="dashboard-title">
+                    <span><FileSpreadsheet size={20} /></span>
+                    <div>
+                        <p>WORK SUMMARY</p>
+                        <h2>集計結果プレビュー <small>更新済み</small></h2>
+                    </div>
+                </div>
+                <div className="dashboard-actions">
+                    <button onClick={onDownloadTemplate} className="action-button subtle">
                         空のテンプレート
                     </button>
-                    <button onClick={onDownloadCsv} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded shadow flex items-center gap-1 transition">
+                    <button onClick={onDownloadCsv} className="action-button secondary">
                         <Download className="w-4 h-4" /> CSV
                     </button>
-                    <button onClick={onDownloadExcel} className="bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 px-4 rounded shadow flex items-center gap-1 transition">
+                    <button onClick={onDownloadExcel} className="action-button primary">
                         <Download className="w-4 h-4" /> Excel保存
                     </button>
                 </div>
             </div>
 
-            <div className="flex-grow flex flex-col overflow-hidden">
-                <div className="flex border-b border-gray-200 bg-gray-50">
+            <div className="dashboard-body">
+                <div className="dashboard-tabs">
                     <button
                         onClick={() => setActiveTab('summary')}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'summary' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={activeTab === 'summary' ? 'is-active' : ''}
                     >
                         集計サマリー
                     </button>
                     <button
                         onClick={() => setActiveTab('details')}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={activeTab === 'details' ? 'is-active' : ''}
                     >
                         詳細データ (先頭50件)
                     </button>
                 </div>
 
                 {activeTab === 'summary' && (
-                    <div className="flex-grow overflow-auto">
-                        <table className="min-w-full divide-y divide-gray-200 text-sm whitespace-nowrap">
-                            <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                    <div className="dashboard-table-wrap">
+                        <table className="elegant-table min-w-full text-sm whitespace-nowrap">
+                            <thead className="sticky top-0 z-10">
                                 <tr>
                                     <th className="px-3 py-2 text-left font-medium text-gray-500">講師名</th>
                                     <th className="px-3 py-2 text-right font-medium text-gray-500">1:2</th>
@@ -136,9 +139,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 )}
 
                 {activeTab === 'details' && (
-                    <div className="flex-grow overflow-auto">
-                        <table className="min-w-full divide-y divide-gray-200 text-sm whitespace-nowrap relative">
-                            <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                    <div className="dashboard-table-wrap">
+                        <table className="elegant-table min-w-full text-sm whitespace-nowrap relative">
+                            <thead className="sticky top-0 z-10">
                                 <tr>
                                     <th className="px-3 py-2 text-left font-medium text-gray-500">生徒氏名</th>
                                     <th className="px-3 py-2 text-left font-medium text-gray-500">講師名</th>
