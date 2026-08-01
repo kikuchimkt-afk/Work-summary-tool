@@ -5,6 +5,7 @@ import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType, SpecialC
 import { parseCSV, INPUT_COL } from './utils/parser';
 import { transformData, checkDataQuality, sortData, inferLessonTimes } from './utils/transformer';
 import { exportToExcel, DATA_KEYS } from './utils/exporter';
+import { applySpecialRules } from './utils/specialRules';
 import { DropZone } from './components/DropZone';
 import { TeacherConfig } from './components/TeacherConfig';
 import { Dashboard } from './components/Dashboard';
@@ -13,6 +14,30 @@ import type { SpecialCandidate } from './components/SpecialCandidateList';
 import { ExcelPdfDropZone } from './components/ExcelPdfDropZone';
 import { ComiruAutoImport } from './components/ComiruAutoImport';
 import heroImage from './assets/work-summary-hero.png';
+
+const SPECIAL_RULES_STORAGE_KEY = 'schedule_special_rules';
+
+const loadStoredSpecialRules = (): SpecialClassRule[] => {
+  try {
+    const savedRules = localStorage.getItem(SPECIAL_RULES_STORAGE_KEY);
+    if (!savedRules) return [];
+
+    const parsed = JSON.parse(savedRules);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((rule): rule is SpecialClassRule =>
+      rule
+      && typeof rule.id === 'string'
+      && typeof rule.student === 'string'
+      && typeof rule.teacher === 'string'
+      && typeof rule.subject === 'string'
+      && Boolean(rule.student.trim() || rule.teacher.trim() || rule.subject.trim())
+    );
+  } catch (error) {
+    console.error('Failed to load special rules', error);
+    return [];
+  }
+};
 
 const getTeacherNames = (records: AttendanceRecord[]): string[] => {
   const teachers: string[] = [];
@@ -61,7 +86,7 @@ function App() {
   // Config
   const [sortOrder, setSortOrder] = useState<string[]>([]);
   const [excludedTeachers, setExcludedTeachers] = useState<string[]>([]);
-  const [specialRules, setSpecialRules] = useState<SpecialClassRule[]>([]);
+  const [specialRules, setSpecialRules] = useState<SpecialClassRule[]>(loadStoredSpecialRules);
   const [theme, setTheme] = useState<ThemeType>('modern');
   const [sheetComments, setSheetComments] = useState<Record<string, string>>({});
 
@@ -87,9 +112,6 @@ function App() {
       const savedTheme = localStorage.getItem('schedule_theme');
       if (savedTheme) setTheme(savedTheme as ThemeType);
 
-      const savedRules = localStorage.getItem('schedule_special_rules');
-      if (savedRules) setSpecialRules(JSON.parse(savedRules));
-
       const savedComments = localStorage.getItem('schedule_comments');
       if (savedComments) setSheetComments(JSON.parse(savedComments));
 
@@ -113,7 +135,7 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('schedule_special_rules', JSON.stringify(specialRules));
+    localStorage.setItem(SPECIAL_RULES_STORAGE_KEY, JSON.stringify(specialRules));
   }, [specialRules]);
 
   useEffect(() => {
@@ -126,7 +148,7 @@ function App() {
       const timer = setTimeout(() => processTransformation(rawRecords, true), 100);
       return () => clearTimeout(timer);
     }
-  }, [excludedTeachers, sortOrder, specialRules]);
+  }, [excludedTeachers, sortOrder]);
 
   const syncTeacherSettings = (records: AttendanceRecord[]) => {
     const currentTeachers = getTeacherNames(records);
@@ -149,7 +171,11 @@ function App() {
     try {
       console.log('Starting CSV parse for file:', file.name, 'Encoding:', encoding);
       const parsedData = await parseCSV(file, encoding);
-      const data = inferLessonTimes(parsedData);
+      const inferredData = inferLessonTimes(parsedData);
+      const {
+        records: data,
+        matchedCount: specialRuleMatchCount
+      } = applySpecialRules(inferredData, specialRules);
       const estimatedTimeCount = data.filter(row => row._isTimeEstimated).length;
       console.log('Parsed data rows:', data.length);
       if (data.length > 0) {
@@ -170,8 +196,12 @@ function App() {
       } else {
         // Initial transform
         processTransformation(data);
-        const estimateNote = estimatedTimeCount > 0 ? `（授業時間を${estimatedTimeCount}件推定）` : '';
-        setMsg({ type: 'success', text: `読み込み完了: ${data.length}行${estimateNote}` });
+        const notes = [
+          estimatedTimeCount > 0 ? `授業時間を${estimatedTimeCount}件推定` : '',
+          specialRuleMatchCount > 0 ? `特能ルールを${specialRuleMatchCount}件自動適用` : ''
+        ].filter(Boolean);
+        const detailNote = notes.length > 0 ? `（${notes.join('・')}）` : '';
+        setMsg({ type: 'success', text: `読み込み完了: ${data.length}行${detailNote}` });
       }
 
     } catch (e: any) {
@@ -208,14 +238,15 @@ function App() {
   };
 
   const handleModalApply = (updatedData: AttendanceRecord[]) => {
-    setRawRecords(updatedData);
+    const { records: ruleAppliedData } = applySpecialRules(updatedData, specialRules);
+    setRawRecords(ruleAppliedData);
 
     // Re-check quality to update warnings/errors in the modal
-    const { errorIndices: errs, warnIndices: warns } = checkDataQuality(updatedData);
+    const { errorIndices: errs, warnIndices: warns } = checkDataQuality(ruleAppliedData);
     setErrorIndices(errs);
     setWarnIndices(warns);
 
-    processTransformation(updatedData);
+    processTransformation(ruleAppliedData);
   };
 
   const handleDownloadExcel = () => {
@@ -249,46 +280,44 @@ function App() {
     );
   };
 
+  const handleUpdateSpecialRules = (rules: SpecialClassRule[]) => {
+    setSpecialRules(rules);
+
+    if (rawRecords.length === 0) return;
+
+    const result = applySpecialRules(rawRecords, rules);
+    setRawRecords(result.records);
+    setSpecialCandidates([]);
+    processTransformation(result.records, true);
+    setMsg({
+      type: 'success',
+      text: result.matchedCount > 0
+        ? `特能ルールを保存し、現在のCSVへ${result.matchedCount}件適用しました`
+        : '特能ルールを保存しました'
+    });
+  };
+
   // Special Rules Workflow
   const handleScanRules = () => {
-    if (rawRecords.length === 0 || specialRules.length === 0) return;
-    const candidates: { record: AttendanceRecord, index: number, rule: string }[] = [];
+    if (rawRecords.length === 0) {
+      setMsg({ type: 'info', text: '先にCSVファイルを読み込んでください' });
+      return;
+    }
+    if (specialRules.length === 0) {
+      setMsg({ type: 'info', text: '適用する特能ルールが登録されていません' });
+      return;
+    }
 
-    setIsProcessing(true); // Show analyzing state (if desired, or use msg)
-    setMsg({ type: 'info', text: '解析中...' });
-
-    // Use setTimeout to allow UI update
-    setTimeout(() => {
-      try {
-        rawRecords.forEach((row, i) => {
-          if (row._specialConfirmed) return; // Already checked
-
-          const t = row[INPUT_COL.TEACHER] || '';
-          const s = row[INPUT_COL.STUDENT_NAME] || '';
-          const sub = row[INPUT_COL.SUBJECT] || '';
-
-          const match = specialRules.find(r =>
-            (t.includes(r.teacher) || r.teacher === t) &&
-            (s.includes(r.student) || s === r.student) &&
-            (sub.includes(r.subject) || sub === r.subject)
-          );
-
-          if (match) {
-            candidates.push({ record: row, index: i, rule: `${match.student} - ${match.teacher} - ${match.subject}` });
-          }
-        });
-
-        if (candidates.length > 0) {
-          setSpecialCandidates(candidates);
-          // Auto-shown via list component
-        } else {
-          alert("新規に適用する特能授業は見つかりませんでした。");
-        }
-      } finally {
-        setIsProcessing(false);
-        setMsg(null);
-      }
-    }, 100);
+    const result = applySpecialRules(rawRecords, specialRules);
+    setRawRecords(result.records);
+    setSpecialCandidates([]);
+    processTransformation(result.records, true);
+    setMsg({
+      type: 'success',
+      text: result.matchedCount > 0
+        ? `現在のCSVへ特能ルールを${result.matchedCount}件適用しました`
+        : '現在のCSVに一致する特能ルールはありませんでした'
+    });
   };
 
   const handleConfirmSpecial = (results: { index: number, isSpecial: boolean }[]) => {
@@ -296,7 +325,14 @@ function App() {
     const processedIndices = new Set<number>();
 
     results.forEach(({ index, isSpecial }) => {
-      newData[index] = { ...newData[index], _specialConfirmed: true, _forceSpecial: isSpecial };
+      const updatedRecord = {
+        ...newData[index],
+        _specialConfirmed: true,
+        _forceSpecial: isSpecial,
+        _specialRuleSuppressed: !isSpecial
+      };
+      delete updatedRecord._specialRuleId;
+      newData[index] = updatedRecord;
       processedIndices.add(index);
     });
 
@@ -442,7 +478,7 @@ function App() {
               onToggleExclude={toggleExclude}
               onUpdateOrder={setSortOrder}
               specialRules={specialRules}
-              onUpdateRules={setSpecialRules}
+              onUpdateRules={handleUpdateSpecialRules}
               onImportTeachers={handleImportTeachers}
               candidates={specialCandidates}
               onConfirmCandidates={handleConfirmSpecial}

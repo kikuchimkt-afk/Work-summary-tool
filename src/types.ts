@@ -20,6 +20,8 @@ export interface AttendanceRecord {
     _forceType?: 'office' | 'lesson';
     _forceSpecial?: boolean; // If true, treated as special class
     _specialConfirmed?: boolean; // If true, user confirmed this setting
+    _specialRuleId?: string; // Rule that automatically applied the special designation
+    _specialRuleSuppressed?: boolean; // Manual exception for the currently loaded CSV
 
     [key: string]: any;
 }

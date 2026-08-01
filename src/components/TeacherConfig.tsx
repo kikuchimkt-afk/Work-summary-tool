@@ -244,15 +244,17 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
 
                 {activeTab === 'rules' && (
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-semibold text-gray-700">1:2特能, 1:1特能 自動判定ルール</h3>
-                            <p className="text-xs text-gray-500 mt-1">特定の生徒・講師・科目の組み合わせを自動的に「1:2特能」または「1:1特能」として判定するルールを設定します。</p>
+                        <div className="flex justify-between items-start gap-4">
+                            <div>
+                                <h3 className="font-semibold text-gray-700">1:2特能, 1:1特能 自動判定ルール</h3>
+                                <p className="text-xs text-gray-500 mt-1">登録したルールは保存され、手動CSV・Comiru自動取得のどちらでも読み込み時に毎回自動適用されます。</p>
+                            </div>
                             <button
                                 onClick={onScanRules}
-                                className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded flex items-center gap-1 shadow"
+                                className="shrink-0 text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded flex items-center gap-1 shadow"
                             >
                                 <Search size={12} />
-                                適用をスキャン
+                                現在のCSVへ再適用
                             </button>
                         </div>
                         <div className="grid gap-3 bg-gray-50 p-3 rounded border border-gray-200">
@@ -430,7 +432,14 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                                                     <button
                                                         onClick={() => {
                                                             const newData = [...rawRecords];
-                                                            newData[i] = { ...newData[i], _forceSpecial: false, _specialConfirmed: false };
+                                                            const updatedRecord = {
+                                                                ...newData[i],
+                                                                _forceSpecial: false,
+                                                                _specialConfirmed: true,
+                                                                _specialRuleSuppressed: true
+                                                            };
+                                                            delete updatedRecord._specialRuleId;
+                                                            newData[i] = updatedRecord;
                                                             onUpdateRecords(newData);
                                                         }}
                                                         className="text-red-600 hover:text-red-800 hover:bg-red-100 p-1 rounded"
