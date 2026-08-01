@@ -65,17 +65,6 @@ const decodeBase64File = (base64: string, fileName: string, mimeType: string) =>
     return new File([bytes], fileName, { type: mimeType });
 };
 
-const saveOriginalCsv = (file: File) => {
-    const url = URL.createObjectURL(file);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = file.name;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
-
 export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImportProps) => {
     const [month, setMonth] = useState(getDefaultMonth);
     const [connection, setConnection] = useState<ConnectionState>('checking');
@@ -159,7 +148,6 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
                     const fileName = `指導報告書_${range.compact}.csv`;
                     const mimeType = typeof message.mimeType === 'string' ? message.mimeType : 'text/csv';
                     const file = decodeBase64File(base64, fileName, mimeType);
-                    saveOriginalCsv(file);
                     handledRequestIds.current.add(requestId);
                     postToExtension('COMIRU_CSV_ACK', { requestId, ok: true });
                     setImportState('success');
@@ -248,7 +236,7 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
             </div>
 
             <p className="comiru-import-description">
-                対象月を選ぶと、全件表示・全選択・CSV取得を自動で行い、そのまま集計を開始します。
+                対象月を選ぶと、全件表示・全選択・CSV取得を自動で行います。CSVはPCへ保存せず、そのまま集計を開始します。
             </p>
 
             <div className="comiru-import-controls">
