@@ -340,6 +340,10 @@ export const determineSessionWorkType = (
         row[INPUT_COL.CONTENT],
         row[INPUT_COL.COMMENT],
     ].filter(Boolean).join(' ').replace(/[\s\u3000]+/gu, '');
+    const normalizedClassificationText = classificationText.normalize('NFKC').toUpperCase();
+    const isCodedGroupLesson =
+        duration === 90 &&
+        /(?:^|[^A-Z0-9])[123][ME](?:$|[^A-Z0-9])/u.test(normalizedClassificationText);
 
     const isOffice = classificationText.includes('事務');
     const isEnglishConversation = classificationText.includes('英会話');
@@ -349,6 +353,10 @@ export const determineSessionWorkType = (
         normalizeText(row[INPUT_COL.GRADE]) === '0歳';
 
     if (row._forceType === 'office') return 'office';
+
+    // 90-minute 1M/2M/3M/1E/2E/3E courses are group lessons even when the
+    // source CSV labels the record as English conversation.
+    if (isCodedGroupLesson) return 'group';
 
     // Explicit lesson information always wins over the duration. This prevents
     // 80-minute conversation or group lessons from being counted as individual.
