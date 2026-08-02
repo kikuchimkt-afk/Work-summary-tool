@@ -1,11 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type SetStateAction } from 'react';
 import Papa from 'papaparse';
-import { Settings, AlertTriangle, CheckCircle, Sparkles, ShieldCheck, Clock3 } from 'lucide-react';
-import type { AttendanceRecord, GeneratedData, TeacherStats, ThemeType, SpecialClassRule } from './types';
+import { Settings, AlertTriangle, CheckCircle, Sparkles, ShieldCheck, Clock3, Building2, Download, HardDrive, Upload } from 'lucide-react';
+import type { AttendanceRecord, GeneratedData, TeacherStats, SpecialClassRule } from './types';
 import { parseCSV, INPUT_COL } from './utils/parser';
-import { transformData, checkDataQuality, sortData, inferLessonTimes } from './utils/transformer';
+import { transformData, checkDataQuality, sortData, inferLessonTimes, DEFAULT_TEACHER_ORDER } from './utils/transformer';
 import { exportToExcel, DATA_KEYS } from './utils/exporter';
 import { applySpecialRules } from './utils/specialRules';
+import {
+  CAMPUS_DEFINITIONS,
+  createCampusSettingsBackup,
+  getCampusName,
+  loadInitialCampusStore,
+  parseCampusSettingsBackup,
+  saveCampusStore,
+  type CampusId,
+  type CampusSettings
+} from './utils/campusSettings';
 import { DropZone } from './components/DropZone';
 import { TeacherConfig } from './components/TeacherConfig';
 import { Dashboard } from './components/Dashboard';
@@ -14,30 +24,6 @@ import type { SpecialCandidate } from './components/SpecialCandidateList';
 import { ExcelPdfDropZone } from './components/ExcelPdfDropZone';
 import { ComiruAutoImport } from './components/ComiruAutoImport';
 import heroImage from './assets/work-summary-hero.png';
-
-const SPECIAL_RULES_STORAGE_KEY = 'schedule_special_rules';
-
-const loadStoredSpecialRules = (): SpecialClassRule[] => {
-  try {
-    const savedRules = localStorage.getItem(SPECIAL_RULES_STORAGE_KEY);
-    if (!savedRules) return [];
-
-    const parsed = JSON.parse(savedRules);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter((rule): rule is SpecialClassRule =>
-      rule
-      && typeof rule.id === 'string'
-      && typeof rule.student === 'string'
-      && typeof rule.teacher === 'string'
-      && typeof rule.subject === 'string'
-      && Boolean(rule.student.trim() || rule.teacher.trim() || rule.subject.trim())
-    );
-  } catch (error) {
-    console.error('Failed to load special rules', error);
-    return [];
-  }
-};
 
 const getTeacherNames = (records: AttendanceRecord[]): string[] => {
   const teachers: string[] = [];
@@ -78,69 +64,76 @@ const syncTeacherOrder = (previousOrder: string[], currentTeachers: string[]): s
 };
 
 function App() {
+  const [campusStore, setCampusStore] = useState(loadInitialCampusStore);
+  const activeCampusId = campusStore.activeCampusId;
+  const activeCampus = campusStore.campuses[activeCampusId];
+  const { sortOrder, excludedTeachers, specialRules, theme, sheetComments, comiruTenant } = activeCampus.settings;
+
+  const updateCampusSetting = <K extends keyof CampusSettings,>(
+    key: K,
+    update: SetStateAction<CampusSettings[K]>
+  ) => {
+    const targetCampusId = activeCampusId;
+    setCampusStore(previousStore => {
+      const campus = previousStore.campuses[targetCampusId];
+      const currentValue = campus.settings[key];
+      const nextValue = typeof update === 'function'
+        ? (update as (current: CampusSettings[K]) => CampusSettings[K])(currentValue)
+        : update;
+
+      if (Object.is(currentValue, nextValue)) return previousStore;
+
+      return {
+        ...previousStore,
+        campuses: {
+          ...previousStore.campuses,
+          [targetCampusId]: {
+            ...campus,
+            settings: {
+              ...campus.settings,
+              [key]: nextValue
+            }
+          }
+        }
+      };
+    });
+  };
+
+  const setSortOrder = (update: SetStateAction<string[]>) => updateCampusSetting('sortOrder', update);
+  const setExcludedTeachers = (update: SetStateAction<string[]>) => updateCampusSetting('excludedTeachers', update);
+  const setSpecialRules = (update: SetStateAction<SpecialClassRule[]>) => updateCampusSetting('specialRules', update);
+  const setSheetComments = (update: SetStateAction<Record<string, string>>) => updateCampusSetting('sheetComments', update);
+
   // State
   const [rawRecords, setRawRecords] = useState<AttendanceRecord[]>([]);
   const [generatedData, setGeneratedData] = useState<GeneratedData[]>([]);
   const [teacherStats, setTeacherStats] = useState<Record<string, TeacherStats>>({});
 
-  // Config
-  const [sortOrder, setSortOrder] = useState<string[]>([]);
-  const [excludedTeachers, setExcludedTeachers] = useState<string[]>([]);
-  const [specialRules, setSpecialRules] = useState<SpecialClassRule[]>(loadStoredSpecialRules);
-  const [theme, setTheme] = useState<ThemeType>('modern');
-  const [sheetComments, setSheetComments] = useState<Record<string, string>>({});
-
   // UI State
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isComiruImporting, setIsComiruImporting] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [specialCandidates, setSpecialCandidates] = useState<SpecialCandidate[]>([]);
   const [errorIndices, setErrorIndices] = useState<number[]>([]);
   const [warnIndices, setWarnIndices] = useState<number[]>([]);
   const [msg, setMsg] = useState<{ type: 'info' | 'error' | 'success', text: string } | null>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
+  const activeCampusIdRef = useRef<CampusId>(activeCampusId);
+  const isCampusLocked = isProcessing || isComiruImporting;
 
-  // Initial Load
   useEffect(() => {
-    try {
-      const savedEx = localStorage.getItem('schedule_excluded');
-      if (savedEx) setExcludedTeachers(JSON.parse(savedEx));
+    activeCampusIdRef.current = activeCampusId;
+  }, [activeCampusId]);
 
-      const savedSort = localStorage.getItem('schedule_sort_v2');
-      if (savedSort) setSortOrder(JSON.parse(savedSort));
-      else setSortOrder([...DEFAULT_TEACHER_ORDER]);
-
-      const savedTheme = localStorage.getItem('schedule_theme');
-      if (savedTheme) setTheme(savedTheme as ThemeType);
-
-      const savedComments = localStorage.getItem('schedule_comments');
-      if (savedComments) setSheetComments(JSON.parse(savedComments));
-
-    } catch (e) {
-      console.error("Failed to load config", e);
-      setSortOrder([...DEFAULT_TEACHER_ORDER]);
+  useEffect(() => {
+    if (!saveCampusStore(campusStore)) {
+      setMsg({
+        type: 'error',
+        text: 'ブラウザへ設定を保存できません。設定画面の「PCに保存」でバックアップしてください。'
+      });
     }
-  }, []);
-
-  // Persist Config
-  useEffect(() => {
-    localStorage.setItem('schedule_excluded', JSON.stringify(excludedTeachers));
-  }, [excludedTeachers]);
-
-  useEffect(() => {
-    localStorage.setItem('schedule_sort_v2', JSON.stringify(sortOrder));
-  }, [sortOrder]);
-
-  useEffect(() => {
-    localStorage.setItem('schedule_theme', theme);
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem(SPECIAL_RULES_STORAGE_KEY, JSON.stringify(specialRules));
-  }, [specialRules]);
-
-  useEffect(() => {
-    localStorage.setItem('schedule_comments', JSON.stringify(sheetComments));
-  }, [sheetComments]);
+  }, [campusStore]);
 
   // Re-transform when config changes if we have data
   useEffect(() => {
@@ -162,8 +155,80 @@ function App() {
     );
   };
 
+  const clearImportedData = () => {
+    setRawRecords([]);
+    setGeneratedData([]);
+    setTeacherStats({});
+    setSpecialCandidates([]);
+    setErrorIndices([]);
+    setWarnIndices([]);
+    setShowModal(false);
+    setIsProcessing(false);
+  };
+
+  const handleCampusChange = (nextCampusId: CampusId) => {
+    if (nextCampusId === activeCampusId || isCampusLocked) return;
+
+    if (
+      rawRecords.length > 0
+      && !window.confirm('校舎を切り替えると、現在表示中のCSV集計を閉じます。校舎別設定は保存されています。切り替えますか？')
+    ) {
+      return;
+    }
+
+    setCampusStore(previousStore => ({ ...previousStore, activeCampusId: nextCampusId }));
+    clearImportedData();
+    setMsg({ type: 'success', text: `${getCampusName(nextCampusId)}へ切り替えました` });
+  };
+
+  const handleExportCampusSettings = () => {
+    const backup = createCampusSettingsBackup(campusStore);
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const now = new Date();
+    const dateLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    anchor.href = url;
+    anchor.download = `勤務時間集計設定_全校舎_${dateLabel}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setMsg({ type: 'success', text: '藍住校・北島中央校の設定をPCへ保存しました' });
+  };
+
+  const handleImportCampusSettings = async (file: File) => {
+    try {
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('設定ファイルが大きすぎます。2MB以下のJSONファイルを選択してください。');
+      }
+      const importedStore = parseCampusSettingsBackup(await file.text());
+      const summary = CAMPUS_DEFINITIONS.map(campus => {
+        const settings = importedStore.campuses[campus.id].settings;
+        return `${campus.name}: 講師順${settings.sortOrder.length}名・個別なし${settings.excludedTeachers.length}名・特能${settings.specialRules.length}件`;
+      }).join('\n');
+
+      if (!window.confirm(`次の全校舎設定を復元します。現在の校舎別設定は上書きされます。\n\n${summary}\n\n復元しますか？`)) {
+        return;
+      }
+
+      setCampusStore(importedStore);
+      clearImportedData();
+      setMsg({ type: 'success', text: '全校舎の設定を復元しました' });
+    } catch (error) {
+      setMsg({
+        type: 'error',
+        text: error instanceof Error ? error.message : '設定ファイルを復元できませんでした'
+      });
+    } finally {
+      if (backupInputRef.current) backupInputRef.current.value = '';
+    }
+  };
+
 
   const handleFileSelect = async (file: File, encoding: string) => {
+    const importCampusId = activeCampusId;
+    const importSpecialRules = specialRules;
     setIsProcessing(true);
     setMsg({ type: 'info', text: '解析中...' });
     setGeneratedData([]);
@@ -171,11 +236,16 @@ function App() {
     try {
       console.log('Starting CSV parse for file:', file.name, 'Encoding:', encoding);
       const parsedData = await parseCSV(file, encoding);
+      if (activeCampusIdRef.current !== importCampusId) {
+        setIsProcessing(false);
+        setMsg({ type: 'info', text: '校舎が切り替わったため、CSVの読み込みを中止しました' });
+        return;
+      }
       const inferredData = inferLessonTimes(parsedData);
       const {
         records: data,
         matchedCount: specialRuleMatchCount
-      } = applySpecialRules(inferredData, specialRules);
+      } = applySpecialRules(inferredData, importSpecialRules);
       const estimatedTimeCount = data.filter(row => row._isTimeEstimated).length;
       console.log('Parsed data rows:', data.length);
       if (data.length > 0) {
@@ -201,7 +271,7 @@ function App() {
           specialRuleMatchCount > 0 ? `特能ルールを${specialRuleMatchCount}件自動適用` : ''
         ].filter(Boolean);
         const detailNote = notes.length > 0 ? `（${notes.join('・')}）` : '';
-        setMsg({ type: 'success', text: `読み込み完了: ${data.length}行${detailNote}` });
+        setMsg({ type: 'success', text: `${getCampusName(importCampusId)} 読み込み完了: ${data.length}行${detailNote}` });
       }
 
     } catch (e: any) {
@@ -342,12 +412,6 @@ function App() {
   };
 
 
-  const DEFAULT_TEACHER_ORDER = [
-    "吉川講師", "島田講師", "久保講師", "岸本講師", "岡講師", "三井講師",
-    "長井講師", "千種講師", "田頭講師", "永岡講師", "山田講師",
-    "大串講師", "高畠講師", "篠原講師"
-  ];
-
   // Helper to sort teachers
   const compareTeachers = (a: string, b: string) => {
     // Normalization to handle potential whitespace differences
@@ -443,15 +507,31 @@ function App() {
               <h1>勤務時間集計</h1>
             </div>
           </div>
-          <button
-            onClick={() => setShowConfig(!showConfig)}
-            className={`config-trigger ${showConfig ? 'is-open' : ''}`}
-            aria-expanded={showConfig}
-            aria-label="集計設定"
-          >
-            <Settings className="w-4 h-4" />
-            <span>集計設定</span>
-          </button>
+          <div className="header-actions">
+            <label className="campus-switcher">
+              <Building2 size={16} aria-hidden="true" />
+              <span>校舎</span>
+              <select
+                value={activeCampusId}
+                onChange={event => handleCampusChange(event.target.value as CampusId)}
+                disabled={isCampusLocked}
+                aria-label="校舎を選択"
+              >
+                {CAMPUS_DEFINITIONS.map(campus => (
+                  <option key={campus.id} value={campus.id}>{campus.name}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className={`config-trigger ${showConfig ? 'is-open' : ''}`}
+              aria-expanded={showConfig}
+              aria-label="集計設定"
+            >
+              <Settings className="w-4 h-4" />
+              <span>集計設定</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -472,7 +552,51 @@ function App() {
               </div>
               <p>講師の並び順や個別指導の対象、特能ルールを管理できます。</p>
             </div>
+            <div className="campus-storage-bar">
+              <div className="campus-storage-summary">
+                <span className="campus-storage-icon" aria-hidden="true"><HardDrive size={18} /></span>
+                <div>
+                  <strong>{activeCampus.name}の設定</strong>
+                  <p>設定はこのブラウザへ校舎別に自動保存されます。全校舎分をJSONファイルでPCへ保存・復元できます。</p>
+                </div>
+              </div>
+              <label className="comiru-tenant-field">
+                <span>Comiru校舎コード</span>
+                <input
+                  value={comiruTenant}
+                  onChange={event => updateCampusSetting(
+                    'comiruTenant',
+                    event.target.value.toLowerCase().replace(/[^a-z0-9-]/gu, '').slice(0, 80)
+                  )}
+                  placeholder="URLの /○○/reports の○○"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={isCampusLocked}
+                  readOnly={activeCampusId === 'aizumi'}
+                />
+                <small>ComiruのURLで「/reports」の直前にある英数字です。</small>
+              </label>
+              <div className="campus-storage-actions">
+                <button type="button" onClick={handleExportCampusSettings}>
+                  <Download size={15} /> PCに保存
+                </button>
+                <button type="button" onClick={() => backupInputRef.current?.click()} disabled={isCampusLocked}>
+                  <Upload size={15} /> 設定を復元
+                </button>
+                <input
+                  ref={backupInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  hidden
+                  onChange={event => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleImportCampusSettings(file);
+                  }}
+                />
+              </div>
+            </div>
             <TeacherConfig
+              key={activeCampusId}
               teachers={sortOrder}
               excludedTeachers={excludedTeachers}
               onToggleExclude={toggleExclude}
@@ -515,7 +639,15 @@ function App() {
                 </div>
               </div>
               <div className="import-stack">
-                <ComiruAutoImport onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+                <ComiruAutoImport
+                  key={activeCampusId}
+                  onFileSelect={handleFileSelect}
+                  isProcessing={isProcessing}
+                  campusId={activeCampusId}
+                  campusName={activeCampus.name}
+                  comiruTenant={comiruTenant}
+                  onImportingChange={setIsComiruImporting}
+                />
                 <div className="import-divider" aria-hidden="true"><span>または手動で</span></div>
                 <DropZone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
               </div>

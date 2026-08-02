@@ -3,7 +3,7 @@ import { CalendarDays, CheckCircle2, CloudDownload, Loader2, Puzzle, RefreshCw, 
 
 const APP_SOURCE = 'work-summary-tool';
 const EXTENSION_SOURCE = 'work-summary-comiru-extension';
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const MAX_BASE64_LENGTH = 30_000_000;
 
 type ConnectionState = 'checking' | 'ready' | 'missing';
@@ -14,6 +14,8 @@ interface ExtensionEnvelope {
     version?: unknown;
     type?: unknown;
     requestId?: unknown;
+    campusId?: unknown;
+    tenant?: unknown;
     startDate?: unknown;
     endDate?: unknown;
     stage?: unknown;
@@ -27,6 +29,10 @@ interface ExtensionEnvelope {
 
 interface ComiruAutoImportProps {
     isProcessing: boolean;
+    campusId: string;
+    campusName: string;
+    comiruTenant: string;
+    onImportingChange: (isImporting: boolean) => void;
     onFileSelect: (file: File, encoding: string) => void | Promise<void>;
 }
 
@@ -65,7 +71,14 @@ const decodeBase64File = (base64: string, fileName: string, mimeType: string) =>
     return new File([bytes], fileName, { type: mimeType });
 };
 
-export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImportProps) => {
+export const ComiruAutoImport = ({
+    isProcessing,
+    campusId,
+    campusName,
+    comiruTenant,
+    onImportingChange,
+    onFileSelect
+}: ComiruAutoImportProps) => {
     const [month, setMonth] = useState(getDefaultMonth);
     const [connection, setConnection] = useState<ConnectionState>('checking');
     const [importState, setImportState] = useState<ImportState>('idle');
@@ -78,6 +91,11 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
     useEffect(() => {
         onFileSelectRef.current = onFileSelect;
     }, [onFileSelect]);
+
+    useEffect(() => {
+        onImportingChange(importState === 'working');
+        return () => onImportingChange(false);
+    }, [importState, onImportingChange]);
 
     const monthLabel = useMemo(() => {
         const match = /^(\d{4})-(\d{2})$/u.exec(month);
@@ -123,11 +141,30 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
 
             const requestId = typeof message.requestId === 'string' ? message.requestId : '';
             if (!requestId) return;
+            const responseCampusId = typeof message.campusId === 'string' ? message.campusId : '';
+            const responseTenant = typeof message.tenant === 'string' ? message.tenant : '';
+            if (responseCampusId !== campusId || responseTenant !== comiruTenant) {
+                if (envelope.type === 'COMIRU_CSV_READY') {
+                    postToExtension('COMIRU_CSV_ACK', {
+                        requestId,
+                        campusId: responseCampusId,
+                        tenant: responseTenant,
+                        ok: false,
+                        message: 'Campus changed before CSV delivery'
+                    });
+                }
+                return;
+            }
 
             if (envelope.type === 'COMIRU_CSV_READY') {
                 if (activeRequestId.current && requestId !== activeRequestId.current) return;
                 if (handledRequestIds.current.has(requestId)) {
-                    postToExtension('COMIRU_CSV_ACK', { requestId, ok: true });
+                    postToExtension('COMIRU_CSV_ACK', {
+                        requestId,
+                        campusId: responseCampusId,
+                        tenant: responseTenant,
+                        ok: true
+                    });
                     return;
                 }
 
@@ -135,7 +172,13 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
                 if (!base64 || base64.length > MAX_BASE64_LENGTH) {
                     setImportState('error');
                     setStatusMessage('取得したCSVのサイズを確認できませんでした。');
-                    postToExtension('COMIRU_CSV_ACK', { requestId, ok: false, message: 'CSV size validation failed' });
+                    postToExtension('COMIRU_CSV_ACK', {
+                        requestId,
+                        campusId: responseCampusId,
+                        tenant: responseTenant,
+                        ok: false,
+                        message: 'CSV size validation failed'
+                    });
                     activeRequestId.current = null;
                     return;
                 }
@@ -149,7 +192,12 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
                     const mimeType = typeof message.mimeType === 'string' ? message.mimeType : 'text/csv';
                     const file = decodeBase64File(base64, fileName, mimeType);
                     handledRequestIds.current.add(requestId);
-                    postToExtension('COMIRU_CSV_ACK', { requestId, ok: true });
+                    postToExtension('COMIRU_CSV_ACK', {
+                        requestId,
+                        campusId: responseCampusId,
+                        tenant: responseTenant,
+                        ok: true
+                    });
                     setImportState('success');
                     const rowNote = typeof message.rowCount === 'number' ? `（${message.rowCount}件）` : '';
                     setStatusMessage(`CSVを取得しました${rowNote}。集計を開始します…`);
@@ -159,7 +207,13 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
                     console.error(error);
                     setImportState('error');
                     setStatusMessage('取得したCSVを読み込めませんでした。もう一度お試しください。');
-                    postToExtension('COMIRU_CSV_ACK', { requestId, ok: false, message: 'CSV decode failed' });
+                    postToExtension('COMIRU_CSV_ACK', {
+                        requestId,
+                        campusId: responseCampusId,
+                        tenant: responseTenant,
+                        ok: false,
+                        message: 'CSV decode failed'
+                    });
                     activeRequestId.current = null;
                 }
                 return;
@@ -191,9 +245,14 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
             window.removeEventListener('message', receiveExtensionMessage);
             if (missingTimer.current !== null) window.clearTimeout(missingTimer.current);
         };
-    }, [month, postToExtension]);
+    }, [campusId, comiruTenant, month, postToExtension]);
 
     const startImport = () => {
+        if (!comiruTenant) {
+            setImportState('error');
+            setStatusMessage(`${campusName}のComiru校舎コードを集計設定で入力してください。`);
+            return;
+        }
         if (connection !== 'ready') {
             setImportState('error');
             setStatusMessage('Chrome拡張を設定し、このページを再読み込みしてください。');
@@ -208,6 +267,8 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
             setStatusMessage(`${monthLabel}のComiru指導報告書を開いています…`);
             postToExtension('COMIRU_IMPORT_REQUEST', {
                 requestId,
+                campusId,
+                tenant: comiruTenant,
                 startDate: range.startDate,
                 endDate: range.endDate
             });
@@ -218,6 +279,10 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
     };
 
     const isWorking = importState === 'working' || isProcessing;
+    const tenantConfigured = /^[a-z0-9-]{1,80}$/u.test(comiruTenant);
+    const visibleStatusMessage = tenantConfigured
+        ? statusMessage
+        : `${campusName}のComiru校舎コードを集計設定で入力してください。`;
 
     return (
         <section className="comiru-import-card" aria-labelledby="comiru-import-title">
@@ -236,7 +301,7 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
             </div>
 
             <p className="comiru-import-description">
-                対象月を選ぶと、全件表示・全選択・CSV取得を自動で行います。CSVはPCへ保存せず、そのまま集計を開始します。
+                {campusName}の対象月を選ぶと、全件表示・全選択・CSV取得を自動で行います。CSVはPCへ保存せず、そのまま集計を開始します。
             </p>
 
             <div className="comiru-import-controls">
@@ -244,15 +309,15 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
                     <span><CalendarDays size={14} /> 対象月</span>
                     <input type="month" value={month} onChange={event => setMonth(event.target.value)} disabled={isWorking} />
                 </label>
-                <button type="button" onClick={startImport} disabled={isWorking || connection !== 'ready'}>
+                <button type="button" onClick={startImport} disabled={isWorking || connection !== 'ready' || !tenantConfigured}>
                     {isWorking ? <Loader2 size={17} className="animate-spin" /> : <CloudDownload size={17} />}
                     {isWorking ? '取得しています…' : `${monthLabel}を取得`}
                 </button>
             </div>
 
-            <div className={`comiru-import-status is-${importState} ${connection === 'missing' ? 'is-missing' : ''}`} role="status" aria-live="polite">
-                {importState === 'error' || connection === 'missing' ? <TriangleAlert size={15} /> : importState === 'success' ? <CheckCircle2 size={15} /> : importState === 'working' || connection === 'checking' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-                <span>{statusMessage}</span>
+            <div className={`comiru-import-status is-${importState} ${connection === 'missing' || !tenantConfigured ? 'is-missing' : ''}`} role="status" aria-live="polite">
+                {importState === 'error' || connection === 'missing' || !tenantConfigured ? <TriangleAlert size={15} /> : importState === 'success' ? <CheckCircle2 size={15} /> : importState === 'working' || connection === 'checking' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                <span>{visibleStatusMessage}</span>
                 {connection === 'missing' && (
                     <button type="button" onClick={checkConnection} aria-label="Chrome連携を再確認">
                         <RefreshCw size={14} /> 再確認
@@ -263,7 +328,7 @@ export const ComiruAutoImport = ({ isProcessing, onFileSelect }: ComiruAutoImpor
             {connection === 'missing' && (
                 <div className="extension-setup">
                     <div>
-                        <strong>初回のみ、専用Chrome拡張を追加します</strong>
+                        <strong>初回または更新時に、専用Chrome拡張を追加します</strong>
                         <p>ZIPを展開し、Chromeの拡張機能画面で「パッケージ化されていない拡張機能を読み込む」を選びます。</p>
                     </div>
                     <a href="/work-summary-comiru-extension.zip" download>

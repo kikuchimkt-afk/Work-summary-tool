@@ -1,6 +1,6 @@
 # 勤務時間集計 - Comiru CSV連携 Chrome拡張
 
-勤務時間集計アプリから指定された1か月でComiruの指導報告書検索を開き、次の操作を自動化するManifest V3拡張です。
+勤務時間集計アプリから指定された校舎と1か月でComiruの指導報告書検索を開き、次の操作を自動化するManifest V3拡張です。アプリから受け取った校舎識別子をそのまま使い、開いているタブから校舎を推測したり藍住校へフォールバックしたりしません。
 
 1. Comiruの指導報告書検索を指定期間で開く（既存のComiruタブがあれば再利用）
 2. `.read-more`（「さらに表示」）が表示されなくなるまで押す
@@ -20,16 +20,18 @@
 
 ## アプリとのメッセージ仕様
 
-ページから拡張へは、次のメッセージを送ります。日付は `YYYY-MM-DD` 形式です。
+通信プロトコルはバージョン2です。ページから拡張へは、次のメッセージを送ります。日付は `YYYY-MM-DD` 形式です。`campusId` と `tenant` は必須です。
 
 ```js
 const requestId = crypto.randomUUID();
 
 window.postMessage({
   source: 'work-summary-tool',
-  version: 1,
+  version: 2,
   type: 'COMIRU_IMPORT_REQUEST',
   requestId,
+  campusId: 'aizumi',
+  tenant: 'bestone-aizumi',
   startDate: '2026-06-01',
   endDate: '2026-06-30',
 }, window.location.origin);
@@ -40,17 +42,21 @@ window.postMessage({
 ```js
 window.postMessage({
   source: 'work-summary-tool',
-  version: 1,
+  version: 2,
   type: 'COMIRU_EXTENSION_PING',
 }, window.location.origin);
 ```
 
-ページは `source: 'work-summary-comiru-extension'`、`version: 1` のメッセージを受け取ります。
+ページは `source: 'work-summary-comiru-extension'`、`version: 2` のメッセージを受け取ります。処理に関するメッセージには、要求時と同じ `campusId` と `tenant` が含まれます。
+
+- `campusId` は `aizumi` または `kitajima_chuo`
+- `tenant` は英小文字・数字・ハイフンのみの1〜80文字
+- `campusId: 'aizumi'` の場合、`tenant` は必ず `bestone-aizumi`
 
 - `COMIRU_EXTENSION_READY`: 拡張が利用可能
-- `COMIRU_IMPORT_STATUS`: `requestId`、`stage`、日本語の `message`、件数等の `details`
-- `COMIRU_CSV_READY`: `requestId`、`fileName`、`mimeType`、元CSVバイト列の `base64`、`rowCount`、期間
-- `COMIRU_IMPORT_ERROR`: `requestId`、`code`、日本語の `message`、必要に応じて `detail`
+- `COMIRU_IMPORT_STATUS`: `requestId`、`campusId`、`tenant`、`stage`、日本語の `message`、件数等の `details`
+- `COMIRU_CSV_READY`: `requestId`、`campusId`、`tenant`、`fileName`、`mimeType`、元CSVバイト列の `base64`、`rowCount`、期間
+- `COMIRU_IMPORT_ERROR`: `requestId`、`campusId`、`tenant`、`code`、日本語の `message`、必要に応じて `detail`
 
 完了データを既存のファイル読込処理へ渡す例です。
 
@@ -60,13 +66,16 @@ window.addEventListener('message', (event) => {
     event.source !== window
     || event.origin !== window.location.origin
     || event.data?.source !== 'work-summary-comiru-extension'
-    || event.data?.version !== 1
+    || event.data?.version !== 2
     || event.data?.type !== 'COMIRU_CSV_READY'
   ) {
     return;
   }
 
-  const { base64, fileName, mimeType } = event.data;
+  const { base64, fileName, mimeType, campusId, tenant } = event.data;
+  if (campusId !== 'aizumi' || tenant !== 'bestone-aizumi') {
+    return;
+  }
   const binary = atob(base64);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   const file = new File([bytes], fileName || '指導報告書.csv', {
@@ -76,15 +85,17 @@ window.addEventListener('message', (event) => {
   // 保存・読込の受付に成功した後で、拡張へ受領確認を返します。
   window.postMessage({
     source: 'work-summary-tool',
-    version: 1,
+    version: 2,
     type: 'COMIRU_CSV_ACK',
     requestId: event.data.requestId,
+    campusId,
+    tenant,
     ok: true,
   }, window.location.origin);
 });
 ```
 
-`COMIRU_CSV_ACK` が届くまで、拡張はCSVを一時保存したままにします。受領確認が10秒以内にない場合や画面が閉じられた場合は成功扱いにせず、再送後も確認できなければエラーを通知します。
+`COMIRU_CSV_ACK` が届くまで、拡張はCSVを一時保存したままにします。受領確認にはCSVと同じ `campusId` と `tenant` が必要です。10秒以内に届かない場合、校舎情報が一致しない場合、または画面が閉じられた場合は成功扱いにせず、再送後も確認できなければエラーを通知します。
 
 ## 進捗フェーズ
 
@@ -115,7 +126,8 @@ window.addEventListener('message', (event) => {
 - 同時に実行できるCSV取得は1件です。
 - 全件読込とCSV取得には150秒の上限があります。上限を超えた場合は、期間を短くして再実行してください。
 - Comiru側の画面構造やCSVフォームが変更された場合は、セレクタの調整が必要になることがあります。
-- 既存のComiruタブから学校識別子を取得できない場合は、現在の学校識別子 `bestone-aizumi` を使用します。
+- 対象校舎の `tenant` が未設定・不正な場合は処理を開始しません。既存のComiruタブから推測したり、`bestone-aizumi` を代用したりすることはありません。
+- 指定した `tenant` の `/reports/search` へ移動できない場合や、CSVフォームの送信先が別の `tenant` だった場合は安全のため停止します。
 
 ## localhostでE2E確認する場合
 

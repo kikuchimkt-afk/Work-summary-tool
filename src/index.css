@@ -151,6 +151,69 @@ textarea:focus-visible {
   letter-spacing: 0.07em;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.campus-switcher {
+  min-height: 42px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(36, 82, 71, 0.15);
+  border-radius: 999px;
+  color: var(--forest);
+  background: rgba(255, 254, 250, 0.72);
+  box-shadow: 0 5px 18px rgba(31, 70, 59, 0.04);
+  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.campus-switcher:hover {
+  border-color: rgba(36, 82, 71, 0.3);
+  background: rgba(255, 254, 250, 0.96);
+}
+
+.campus-switcher:focus-within {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(184, 155, 97, 0.18);
+}
+
+.campus-switcher > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.campus-switcher select {
+  min-height: 40px;
+  max-width: 150px;
+  padding: 0 4px;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.campus-switcher select:focus-visible {
+  outline: 0;
+}
+
+.campus-switcher:has(select:disabled) {
+  opacity: 0.58;
+}
+
+.campus-switcher select:disabled {
+  cursor: wait;
+}
+
 .config-trigger {
   height: 42px;
   padding: 0 17px;
@@ -808,6 +871,142 @@ textarea:focus-visible {
   box-shadow: var(--shadow-soft);
 }
 
+.campus-storage-bar {
+  margin-bottom: 14px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(245px, 0.7fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(36, 82, 71, 0.12);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(232, 238, 232, 0.74), rgba(255, 254, 250, 0.9));
+}
+
+.campus-storage-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.campus-storage-summary strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
+.campus-storage-summary p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.campus-storage-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(36, 82, 71, 0.12);
+  border-radius: 12px;
+  color: var(--forest);
+  background: rgba(255, 254, 250, 0.82);
+  box-shadow: 0 6px 16px rgba(31, 70, 59, 0.05);
+}
+
+.comiru-tenant-field {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.comiru-tenant-field > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.comiru-tenant-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(36, 82, 71, 0.16);
+  border-radius: 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  box-shadow: inset 0 1px 2px rgba(24, 53, 47, 0.03);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.comiru-tenant-field input::placeholder {
+  color: #929b97;
+}
+
+.comiru-tenant-field input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(184, 155, 97, 0.13);
+}
+
+.comiru-tenant-field input:read-only {
+  color: #52615c;
+  background: rgba(242, 242, 237, 0.9);
+  cursor: default;
+}
+
+.comiru-tenant-field input:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.comiru-tenant-field small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.campus-storage-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.campus-storage-actions button {
+  min-height: 42px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(36, 82, 71, 0.16);
+  border-radius: 10px;
+  color: var(--forest);
+  background: rgba(255, 254, 250, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.campus-storage-actions button:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--forest);
+  background: var(--forest);
+  transform: translateY(-1px);
+}
+
+.campus-storage-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .config-panel {
   height: 600px;
   display: flex;
@@ -1291,6 +1490,14 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1020px) {
+  .campus-storage-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .campus-storage-summary {
+    grid-column: 1 / -1;
+  }
+
   .hero-card {
     grid-template-columns: 1fr;
   }
@@ -1312,7 +1519,8 @@ textarea:focus-visible {
 @media (max-width: 720px) {
   .app-header-inner {
     min-height: 72px;
-    padding: 0 18px;
+    padding: 0 14px;
+    gap: 8px;
   }
 
   .brand-mark {
@@ -1324,18 +1532,46 @@ textarea:focus-visible {
     font-size: 15px;
   }
 
+  .brand-lockup {
+    gap: 9px;
+  }
+
   .brand-kicker {
     font-size: 7px;
   }
 
   .config-trigger {
     width: 40px;
+    min-width: 40px;
     padding: 0;
     justify-content: center;
   }
 
   .config-trigger span {
     display: none;
+  }
+
+  .header-actions {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .campus-switcher {
+    min-width: 0;
+    padding: 0 8px;
+    gap: 4px;
+  }
+
+  .campus-switcher > span,
+  .campus-switcher > svg {
+    display: none;
+  }
+
+  .campus-switcher select {
+    width: min(25vw, 104px);
+    min-width: 76px;
+    padding: 0 2px;
+    font-size: 12px;
   }
 
   .app-main {
@@ -1420,6 +1656,28 @@ textarea:focus-visible {
     padding: 17px;
   }
 
+  .campus-storage-bar {
+    padding: 13px;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .campus-storage-summary {
+    grid-column: auto;
+    align-items: flex-start;
+  }
+
+  .campus-storage-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .campus-storage-actions button {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
   .config-panel .space-y-4 > .flex {
     align-items: flex-start;
     flex-direction: column;
@@ -1483,6 +1741,47 @@ textarea:focus-visible {
 
   .app-footer {
     width: calc(100% - 28px);
+  }
+}
+
+@media (max-width: 360px) {
+  .app-header-inner {
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+  }
+
+  .brand-lockup {
+    gap: 7px;
+  }
+
+  .brand-lockup h1 {
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .brand-kicker {
+    font-size: 6px;
+    letter-spacing: 0.13em;
+  }
+
+  .header-actions {
+    gap: 5px;
+  }
+
+  .campus-switcher {
+    padding: 0 6px;
+  }
+
+  .campus-switcher select {
+    width: 74px;
+    min-width: 70px;
   }
 }
 

@@ -3,7 +3,7 @@
 
   const PAGE_SOURCE = 'work-summary-tool';
   const EXTENSION_SOURCE = 'work-summary-comiru-extension';
-  const PROTOCOL_VERSION = 1;
+  const PROTOCOL_VERSION = 2;
   const START_TYPE = 'COMIRU_IMPORT_REQUEST';
   const PING_TYPE = 'COMIRU_EXTENSION_PING';
   const ACK_TYPE = 'COMIRU_CSV_ACK';
@@ -58,6 +58,18 @@
       if (!pending) {
         return;
       }
+      if (message.campusId !== pending.campusId || message.tenant !== pending.tenant) {
+        window.clearTimeout(pending.timer);
+        pendingDeliveries.delete(message.requestId);
+        pending.sendResponse({
+          ok: false,
+          error: {
+            code: 'CSV_ACK_CAMPUS_MISMATCH',
+            message: 'CSVの受領確認と取得校舎が一致しません。',
+          },
+        });
+        return;
+      }
       window.clearTimeout(pending.timer);
       pendingDeliveries.delete(message.requestId);
       pending.sendResponse({
@@ -80,24 +92,33 @@
       ? message.requestId
       : makeRequestId();
     const payload = message.payload && typeof message.payload === 'object' ? message.payload : message;
+    const campusId = payload.campusId;
+    const tenant = payload.tenant;
 
     // The runtime response intentionally remains pending until the worker has
     // finished. This keeps the MV3 message event alive during long imports.
     postToPage('COMIRU_IMPORT_STATUS', {
       requestId,
+      campusId,
+      tenant,
       stage: 'accepted',
       message: 'ComiruからのCSV取得を開始しました。',
     });
 
     chrome.runtime.sendMessage({
+      version: PROTOCOL_VERSION,
       type: START_TYPE,
       requestId,
+      campusId,
+      tenant,
       startDate: payload.startDate,
       endDate: payload.endDate,
     }).then((response) => {
       if (!response?.ok && !response?.reported) {
         postToPage('COMIRU_IMPORT_ERROR', {
           requestId,
+          campusId,
+          tenant,
           code: response?.error?.code ?? 'EXTENSION_REQUEST_FAILED',
           message: response?.error?.message ?? 'Chrome拡張へ処理を依頼できませんでした。',
           detail: response?.error?.detail,
@@ -106,6 +127,8 @@
     }).catch((error) => {
       postToPage('COMIRU_IMPORT_ERROR', {
         requestId,
+        campusId,
+        tenant,
         code: 'EXTENSION_UNAVAILABLE',
         message: 'Chrome拡張と通信できません。拡張機能が有効か確認してください。',
         detail: error instanceof Error ? error.message : String(error),
@@ -121,6 +144,8 @@
     if (message.type === 'COMIRU_IMPORT_STATUS') {
       postToPage('COMIRU_IMPORT_STATUS', {
         requestId: message.requestId,
+        campusId: message.campusId,
+        tenant: message.tenant,
         stage: message.stage,
         message: message.message,
         details: message.details,
@@ -132,6 +157,8 @@
     if (message.type === 'COMIRU_IMPORT_ERROR') {
       postToPage('COMIRU_IMPORT_ERROR', {
         requestId: message.requestId,
+        campusId: message.campusId,
+        tenant: message.tenant,
         code: message.code,
         message: message.message,
         detail: message.detail,
@@ -158,6 +185,8 @@
 
       postToPage('COMIRU_CSV_READY', {
         requestId,
+        campusId: message.campusId,
+        tenant: message.tenant,
         ...message.payload,
       });
       const timer = window.setTimeout(() => {
@@ -174,7 +203,12 @@
           },
         });
       }, DELIVERY_ACK_TIMEOUT_MS);
-      pendingDeliveries.set(requestId, { sendResponse, timer });
+      pendingDeliveries.set(requestId, {
+        sendResponse,
+        timer,
+        campusId: message.campusId,
+        tenant: message.tenant,
+      });
       return true;
     }
 

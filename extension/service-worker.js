@@ -4,7 +4,10 @@ const APP_ORIGIN = 'https://work-summary-tool.vercel.app';
 const APP_MATCH = `${APP_ORIGIN}/*`;
 const COMIRU_ORIGIN = 'https://comiru.jp';
 const COMIRU_MATCH = `${COMIRU_ORIGIN}/*`;
-const DEFAULT_TENANT = 'bestone-aizumi';
+const PROTOCOL_VERSION = 2;
+const CAMPUS_IDS = new Set(['aizumi', 'kitajima_chuo']);
+const TENANT_PATTERN = /^[a-z0-9-]{1,80}$/;
+const AIZUMI_TENANT = 'bestone-aizumi';
 const STORAGE_PREFIX = 'comiru-csv:';
 const STORAGE_TTL_MS = 30 * 60 * 1000;
 // base64 adds roughly 33%, while storage.session has a 10 MB quota.
@@ -49,6 +52,22 @@ const isIsoDate = (value) => {
 };
 
 const validateRequest = (message) => {
+  if (message.version !== PROTOCOL_VERSION) {
+    throw makeError('INVALID_PROTOCOL_VERSION', 'アプリとChrome拡張の通信バージョンが一致しません。拡張機能とアプリを更新してください。');
+  }
+
+  if (typeof message.campusId !== 'string' || !CAMPUS_IDS.has(message.campusId)) {
+    throw makeError('INVALID_CAMPUS', '対象校舎が正しく指定されていません。', undefined, false);
+  }
+
+  if (typeof message.tenant !== 'string' || !TENANT_PATTERN.test(message.tenant)) {
+    throw makeError('INVALID_TENANT', 'Comiruの校舎識別子が正しく指定されていません。', undefined, false);
+  }
+
+  if (message.campusId === 'aizumi' && message.tenant !== AIZUMI_TENANT) {
+    throw makeError('CAMPUS_TENANT_MISMATCH', '藍住校のComiru識別子が一致しません。', undefined, false);
+  }
+
   if (!isIsoDate(message.startDate) || !isIsoDate(message.endDate)) {
     throw makeError('INVALID_DATE', '開始日と終了日を正しく指定してください。');
   }
@@ -89,8 +108,11 @@ const notifyApp = async (job, message) => {
 };
 
 const notifyProgress = (job, phase, message, details) => notifyApp(job, {
+  version: PROTOCOL_VERSION,
   type: 'COMIRU_IMPORT_STATUS',
   requestId: job.requestId,
+  campusId: job.campusId,
+  tenant: job.tenant,
   stage: phase,
   message,
   details,
@@ -131,28 +153,21 @@ const waitForTabComplete = async (tabId, timeoutMs = 60000) => {
   });
 };
 
-const getTenantFromUrl = (urlText) => {
+const isTargetTenantReportsUrl = (urlText, tenant) => {
   try {
     const url = new URL(urlText);
-    if (url.origin !== COMIRU_ORIGIN) {
-      return null;
-    }
-    // Global Comiru pages can begin with paths such as /teachers or /login.
-    // Only a URL that already contains /<tenant>/reports is authoritative.
-    const reportsPath = /^\/([^/]+)\/reports(?:\/|$)/.exec(url.pathname);
-    return reportsPath?.[1] || null;
+    return url.origin === COMIRU_ORIGIN
+      && (url.pathname === `/${tenant}/reports` || url.pathname.startsWith(`/${tenant}/reports/`));
   } catch {
-    // Fall through to the known school tenant.
+    return false;
   }
-  return null;
 };
 
 const openComiruSearch = async (job) => {
   const tabs = await chrome.tabs.query({ url: COMIRU_MATCH });
-  const searchTab = tabs.find((tab) => tab.url?.includes('/reports/search'));
-  const reusableTab = searchTab || tabs.find((tab) => tab.id !== job.appTabId);
-  const tenant = getTenantFromUrl(reusableTab?.url) || DEFAULT_TENANT;
-  const searchUrl = new URL(`/${tenant}/reports/search`, COMIRU_ORIGIN);
+  const targetTenantTab = tabs.find((tab) => isTargetTenantReportsUrl(tab.url, job.tenant));
+  const reusableTab = targetTenantTab || tabs.find((tab) => tab.id !== job.appTabId);
+  const searchUrl = new URL(`/${job.tenant}/reports/search`, COMIRU_ORIGIN);
   searchUrl.searchParams.set('date_start', job.startDate);
   searchUrl.searchParams.set('date_end', job.endDate);
 
@@ -176,10 +191,16 @@ const openComiruSearch = async (job) => {
   } catch {
     loadedUrl = null;
   }
-  if (loadedUrl?.origin !== COMIRU_ORIGIN || !loadedUrl.pathname.includes('/reports/search')) {
+  const expectedPath = `/${job.tenant}/reports/search`;
+  const loadedPath = loadedUrl?.pathname?.replace(/\/+$/u, '') || '';
+  const isExpectedSearch = loadedUrl?.origin === COMIRU_ORIGIN
+    && loadedPath === expectedPath
+    && loadedUrl.searchParams.get('date_start') === job.startDate
+    && loadedUrl.searchParams.get('date_end') === job.endDate;
+  if (!isExpectedSearch) {
     throw makeError(
-      'COMIRU_LOGIN_REQUIRED',
-      'Comiruへのログインが必要です。開いたタブでログインしてから、もう一度実行してください。',
+      'COMIRU_TARGET_MISMATCH',
+      '指定した校舎のComiru指導報告書検索を開けませんでした。ログイン状態と校舎へのアクセス権を確認してください。',
       loadedTab.url,
     );
   }
@@ -189,7 +210,7 @@ const openComiruSearch = async (job) => {
 
 // This function is serialized by chrome.scripting.executeScript and therefore
 // intentionally contains all of its helpers.
-async function automateComiruPage(requestId, maxCsvBytes) {
+async function automateComiruPage(requestId, maxCsvBytes, tenant) {
   const MAIN_SOURCE = 'work-summary-tool-comiru-main';
   const deadlineAt = Date.now() + 150000;
   const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -295,8 +316,10 @@ async function automateComiruPage(requestId, maxCsvBytes) {
   };
 
   try {
-    if (!window.location.pathname.includes('/reports/search')) {
-      fail('COMIRU_SEARCH_NOT_FOUND', 'Comiruの指導報告書検索画面を開けませんでした。');
+    const expectedSearchPath = `/${tenant}/reports/search`;
+    const currentPath = window.location.pathname.replace(/\/+$/u, '');
+    if (!/^[a-z0-9-]{1,80}$/u.test(tenant) || currentPath !== expectedSearchPath) {
+      fail('COMIRU_TARGET_MISMATCH', '指定した校舎のComiru指導報告書検索画面ではありません。');
     }
 
     progress('waiting_for_results', '指導報告書の検索結果を確認しています。');
@@ -414,7 +437,10 @@ async function automateComiruPage(requestId, maxCsvBytes) {
       ? csvControl.formAction
       : form.action || window.location.href;
     const actionUrl = new URL(action, window.location.href);
-    if (actionUrl.origin !== window.location.origin) {
+    if (
+      actionUrl.origin !== window.location.origin
+      || !(actionUrl.pathname === `/${tenant}/reports` || actionUrl.pathname.startsWith(`/${tenant}/reports/`))
+    ) {
       fail('INVALID_CSV_ENDPOINT', 'CSVの送信先を安全に確認できませんでした。');
     }
     progress('downloading_csv', '選択した指導報告書のCSVを取得しています。', {
@@ -511,7 +537,7 @@ const runPageAutomation = async (job) => {
     target: { tabId: job.comiruTabId },
     world: 'MAIN',
     func: automateComiruPage,
-    args: [job.requestId, MAX_CSV_BYTES],
+    args: [job.requestId, MAX_CSV_BYTES, job.tenant],
   });
   const result = injection?.[0]?.result;
   if (!result?.ok) {
@@ -562,6 +588,9 @@ const deliverStoredCsv = async (job, storageKey) => {
   if (!stored?.base64) {
     throw makeError('STORED_CSV_MISSING', '取得済みCSVの一時データが見つかりませんでした。');
   }
+  if (stored.campusId !== job.campusId || stored.tenant !== job.tenant) {
+    throw makeError('STORED_CSV_CAMPUS_MISMATCH', '取得済みCSVの校舎情報が現在の処理と一致しません。', undefined, false);
+  }
 
   const appTabId = await focusAppTab(job);
   await notifyProgress(job, 'returning_to_app', 'CSVを勤務時間集計アプリへ渡しています。', {
@@ -572,9 +601,14 @@ const deliverStoredCsv = async (job, storageKey) => {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const acknowledgement = await chrome.tabs.sendMessage(appTabId, {
+        version: PROTOCOL_VERSION,
         type: 'COMIRU_CSV_DELIVER',
         requestId: stored.requestId,
+        campusId: stored.campusId,
+        tenant: stored.tenant,
         payload: {
+          campusId: stored.campusId,
+          tenant: stored.tenant,
           fileName: stored.fileName,
           mimeType: stored.mimeType,
           base64: stored.base64,
@@ -632,6 +666,8 @@ const executeJob = async (job) => {
     await chrome.storage.session.set({
       [storageKey]: {
         requestId: job.requestId,
+        campusId: job.campusId,
+        tenant: job.tenant,
         base64: result.base64,
         fileName: result.fileName,
         mimeType: result.mimeType,
@@ -652,19 +688,33 @@ const executeJob = async (job) => {
     await notifyProgress(job, 'complete', 'CSVの受け渡しが完了しました。', {
       reportCount: result.reportCount,
     });
-    return { ok: true, requestId: job.requestId };
+    return {
+      ok: true,
+      requestId: job.requestId,
+      campusId: job.campusId,
+      tenant: job.tenant,
+    };
   } catch (error) {
     await chrome.storage.session.remove(storageKey).catch(() => undefined);
     const errorPayload = toErrorPayload(error);
     const reported = await notifyApp(job, {
+      version: PROTOCOL_VERSION,
       type: 'COMIRU_IMPORT_ERROR',
       requestId: job.requestId,
+      campusId: job.campusId,
+      tenant: job.tenant,
       code: errorPayload.code,
       message: errorPayload.message,
       detail: errorPayload.detail,
       recoverable: errorPayload.recoverable,
     });
-    return { ok: false, error: errorPayload, reported };
+    return {
+      ok: false,
+      campusId: job.campusId,
+      tenant: job.tenant,
+      error: errorPayload,
+      reported,
+    };
   } finally {
     if (activeJob?.requestId === job.requestId) {
       activeJob = null;
@@ -689,6 +739,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       const job = {
         requestId: message.requestId,
+        campusId: message.campusId,
+        tenant: message.tenant,
         startDate: message.startDate,
         endDate: message.endDate,
         appTabId: sender.tab.id,
