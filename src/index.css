@@ -504,7 +504,8 @@ textarea:focus-visible {
   background: rgba(111, 177, 136, 0.14);
 }
 
-.extension-state.is-missing {
+.extension-state.is-missing,
+.extension-state.is-outdated {
   color: #ffe2b8;
   border-color: rgba(239, 192, 126, 0.31);
   background: rgba(159, 104, 45, 0.16);

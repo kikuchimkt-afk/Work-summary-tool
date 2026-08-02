@@ -4,9 +4,10 @@ import { CalendarDays, CheckCircle2, CloudDownload, Loader2, Puzzle, RefreshCw, 
 const APP_SOURCE = 'work-summary-tool';
 const EXTENSION_SOURCE = 'work-summary-comiru-extension';
 const PROTOCOL_VERSION = 2;
+const EXTENSION_VERSION = '1.1.0';
 const MAX_BASE64_LENGTH = 30_000_000;
 
-type ConnectionState = 'checking' | 'ready' | 'missing';
+type ConnectionState = 'checking' | 'ready' | 'missing' | 'outdated';
 type ImportState = 'idle' | 'working' | 'success' | 'error';
 
 interface ExtensionEnvelope {
@@ -111,17 +112,26 @@ export const ComiruAutoImport = ({
         }, window.location.origin);
     }, []);
 
+    const pingExtensionVersions = useCallback(() => {
+        postToExtension('COMIRU_EXTENSION_PING');
+        window.postMessage({
+            source: APP_SOURCE,
+            version: 1,
+            type: 'COMIRU_EXTENSION_PING'
+        }, window.location.origin);
+    }, [postToExtension]);
+
     const checkConnection = useCallback(() => {
         setConnection('checking');
         setStatusMessage('Chrome拡張との接続を確認しています…');
-        postToExtension('COMIRU_EXTENSION_PING');
+        pingExtensionVersions();
 
         if (missingTimer.current !== null) window.clearTimeout(missingTimer.current);
         missingTimer.current = window.setTimeout(() => {
             setConnection(current => current === 'ready' ? current : 'missing');
             setStatusMessage(current => current.includes('取得') ? current : '初回のみChrome拡張の設定が必要です。');
         }, 1800);
-    }, [postToExtension]);
+    }, [pingExtensionVersions]);
 
     useEffect(() => {
         const receiveExtensionMessage = (event: MessageEvent) => {
@@ -129,7 +139,16 @@ export const ComiruAutoImport = ({
             if (!event.data || typeof event.data !== 'object') return;
 
             const envelope = event.data as ExtensionEnvelope;
-            if (envelope.source !== EXTENSION_SOURCE || envelope.version !== PROTOCOL_VERSION || typeof envelope.type !== 'string') return;
+            if (envelope.source !== EXTENSION_SOURCE || typeof envelope.type !== 'string') return;
+
+            if (envelope.type === 'COMIRU_EXTENSION_READY' && envelope.version === 1) {
+                if (missingTimer.current !== null) window.clearTimeout(missingTimer.current);
+                setConnection('outdated');
+                setStatusMessage(`Chrome拡張を${EXTENSION_VERSION}へ更新してください。`);
+                return;
+            }
+
+            if (envelope.version !== PROTOCOL_VERSION) return;
             const message = getPayload(envelope);
 
             if (envelope.type === 'COMIRU_EXTENSION_READY') {
@@ -236,7 +255,7 @@ export const ComiruAutoImport = ({
         };
 
         window.addEventListener('message', receiveExtensionMessage);
-        postToExtension('COMIRU_EXTENSION_PING');
+        pingExtensionVersions();
         missingTimer.current = window.setTimeout(() => {
             setConnection(current => current === 'ready' ? current : 'missing');
             setStatusMessage(current => current.includes('取得') ? current : '初回のみChrome拡張の設定が必要です。');
@@ -245,7 +264,7 @@ export const ComiruAutoImport = ({
             window.removeEventListener('message', receiveExtensionMessage);
             if (missingTimer.current !== null) window.clearTimeout(missingTimer.current);
         };
-    }, [campusId, comiruTenant, month, postToExtension]);
+    }, [campusId, comiruTenant, month, pingExtensionVersions, postToExtension]);
 
     const startImport = () => {
         if (!comiruTenant) {
@@ -295,8 +314,8 @@ export const ComiruAutoImport = ({
                     </div>
                 </div>
                 <span className={`extension-state is-${connection}`}>
-                    {connection === 'ready' ? <CheckCircle2 size={13} /> : connection === 'checking' ? <Loader2 size={13} className="animate-spin" /> : <Puzzle size={13} />}
-                    {connection === 'ready' ? 'Chrome連携済み' : connection === 'checking' ? '確認中' : '初回設定が必要'}
+                    {connection === 'ready' ? <CheckCircle2 size={13} /> : connection === 'checking' ? <Loader2 size={13} className="animate-spin" /> : connection === 'outdated' ? <TriangleAlert size={13} /> : <Puzzle size={13} />}
+                    {connection === 'ready' ? 'Chrome連携済み' : connection === 'checking' ? '確認中' : connection === 'outdated' ? '更新が必要' : '初回設定が必要'}
                 </span>
             </div>
 
@@ -315,24 +334,24 @@ export const ComiruAutoImport = ({
                 </button>
             </div>
 
-            <div className={`comiru-import-status is-${importState} ${connection === 'missing' || !tenantConfigured ? 'is-missing' : ''}`} role="status" aria-live="polite">
-                {importState === 'error' || connection === 'missing' || !tenantConfigured ? <TriangleAlert size={15} /> : importState === 'success' ? <CheckCircle2 size={15} /> : importState === 'working' || connection === 'checking' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+            <div className={`comiru-import-status is-${importState} ${connection === 'missing' || connection === 'outdated' || !tenantConfigured ? 'is-missing' : ''}`} role="status" aria-live="polite">
+                {importState === 'error' || connection === 'missing' || connection === 'outdated' || !tenantConfigured ? <TriangleAlert size={15} /> : importState === 'success' ? <CheckCircle2 size={15} /> : importState === 'working' || connection === 'checking' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
                 <span>{visibleStatusMessage}</span>
-                {connection === 'missing' && (
+                {(connection === 'missing' || connection === 'outdated') && (
                     <button type="button" onClick={checkConnection} aria-label="Chrome連携を再確認">
                         <RefreshCw size={14} /> 再確認
                     </button>
                 )}
             </div>
 
-            {connection === 'missing' && (
+            {(connection === 'missing' || connection === 'outdated') && (
                 <div className="extension-setup">
                     <div>
-                        <strong>初回または更新時に、専用Chrome拡張を追加します</strong>
-                        <p>ZIPを展開し、Chromeの拡張機能画面で「パッケージ化されていない拡張機能を読み込む」を選びます。</p>
+                        <strong>{connection === 'outdated' ? `専用Chrome拡張を${EXTENSION_VERSION}へ更新します` : '初回のみ、専用Chrome拡張を追加します'}</strong>
+                        <p>{connection === 'outdated' ? '新版ZIPを展開して既存フォルダを置き換え、Chromeの拡張機能画面で再読み込みします。' : 'ZIPを展開し、Chromeの拡張機能画面で「パッケージ化されていない拡張機能を読み込む」を選びます。'}</p>
                     </div>
-                    <a href="/work-summary-comiru-extension.zip" download>
-                        <Puzzle size={15} /> 拡張機能をダウンロード
+                    <a href={`/work-summary-comiru-extension.zip?v=${EXTENSION_VERSION}`} download={`work-summary-comiru-extension-v${EXTENSION_VERSION}.zip`}>
+                        <Puzzle size={15} /> {connection === 'outdated' ? '新版をダウンロード' : '拡張機能をダウンロード'}
                     </a>
                 </div>
             )}
