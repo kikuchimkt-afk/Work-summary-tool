@@ -70,17 +70,25 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         setSearchTerm('');
     };
 
+    const handleOpen = () => {
+        if (isOpen) return;
+        setSearchTerm(value);
+        setIsOpen(true);
+    };
+
     return (
         <div className={`relative ${className}`} ref={containerRef}>
             <div
                 className="relative flex items-center w-full"
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={handleOpen}
             >
                 <input
                     type="text"
                     value={isOpen ? searchTerm : value}
                     onChange={e => {
-                        setSearchTerm(e.target.value);
+                        const nextValue = e.target.value;
+                        setSearchTerm(nextValue);
+                        onChange(nextValue);
                         if (!isOpen) setIsOpen(true);
                     }}
                     placeholder={placeholder}

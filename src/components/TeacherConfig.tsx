@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { DropResult } from '@hello-pangea/dnd';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { GripVertical, RotateCcw, Search, Settings2, Users, UserX, ListChecks, MessageSquare, X, Trash2 } from 'lucide-react';
+import { GripVertical, RotateCcw, Search, Settings2, Users, UserX, ListChecks, MessageSquare, X, Trash2, Pencil } from 'lucide-react';
 import { SearchableSelect } from './ui/SearchableSelect';
 import type { SpecialClassRule } from '../types';
 import type { AttendanceRecord } from '../types';
@@ -50,6 +50,10 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
     const [ruleStudent, setRuleStudent] = useState('');
     const [ruleTeacher, setRuleTeacher] = useState('');
     const [ruleSubject, setRuleSubject] = useState('');
+    const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+    const [editRuleStudent, setEditRuleStudent] = useState('');
+    const [editRuleTeacher, setEditRuleTeacher] = useState('');
+    const [editRuleSubject, setEditRuleSubject] = useState('');
 
     // Deletion State
     const [delStudent, setDelStudent] = useState('');
@@ -83,8 +87,36 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
         setRuleSubject('');
     };
 
+    const handleStartRuleEdit = (rule: SpecialClassRule) => {
+        setEditingRuleId(rule.id);
+        setEditRuleStudent(rule.student);
+        setEditRuleTeacher(rule.teacher);
+        setEditRuleSubject(rule.subject);
+    };
+
+    const handleCancelRuleEdit = () => {
+        setEditingRuleId(null);
+        setEditRuleStudent('');
+        setEditRuleTeacher('');
+        setEditRuleSubject('');
+    };
+
+    const handleSaveRuleEdit = () => {
+        if (!editingRuleId || (!editRuleStudent && !editRuleTeacher && !editRuleSubject)) return;
+        onUpdateRules(specialRules.map(rule => rule.id === editingRuleId
+            ? {
+                ...rule,
+                student: editRuleStudent,
+                teacher: editRuleTeacher,
+                subject: editRuleSubject
+            }
+            : rule));
+        handleCancelRuleEdit();
+    };
+
     const handleDeleteRule = (id: string) => {
         onUpdateRules(specialRules.filter(r => r.id !== id));
+        if (editingRuleId === id) handleCancelRuleEdit();
     };
 
     const displayTeachers = teachers;
@@ -281,15 +313,73 @@ export const TeacherConfig: React.FC<TeacherConfigProps> = ({
                         </div>
                         <div className="space-y-2">
                             {specialRules.map(rule => (
-                                <div key={rule.id} className="bg-white p-3 border rounded shadow-sm text-sm relative group">
-                                    <button onClick={() => handleDeleteRule(rule.id)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <X size={16} />
-                                    </button>
-                                    <div className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1">
-                                        {rule.student && <><span className="text-gray-500">生徒:</span><span className="font-medium">{rule.student}</span></>}
-                                        {rule.teacher && <><span className="text-gray-500">講師:</span><span className="font-medium">{rule.teacher}</span></>}
-                                        {rule.subject && <><span className="text-gray-500">科目:</span><span className="font-medium">{rule.subject}</span></>}
-                                    </div>
+                                <div key={rule.id} className="bg-white p-3 border rounded shadow-sm text-sm">
+                                    {editingRuleId === rule.id ? (
+                                        <div className="space-y-3">
+                                            <div className="grid gap-2">
+                                                <SearchableSelect
+                                                    value={editRuleStudent}
+                                                    onChange={setEditRuleStudent}
+                                                    options={studentOptions}
+                                                    placeholder="生徒名 (部分一致)"
+                                                />
+                                                <SearchableSelect
+                                                    value={editRuleTeacher}
+                                                    onChange={setEditRuleTeacher}
+                                                    options={teacherOptions}
+                                                    placeholder="講師名 (部分一致)"
+                                                />
+                                                <SearchableSelect
+                                                    value={editRuleSubject}
+                                                    onChange={setEditRuleSubject}
+                                                    options={subjectOptions}
+                                                    placeholder="科目 (部分一致)"
+                                                />
+                                            </div>
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    onClick={handleCancelRuleEdit}
+                                                    className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                                                >
+                                                    キャンセル
+                                                </button>
+                                                <button
+                                                    onClick={handleSaveRuleEdit}
+                                                    disabled={!editRuleStudent && !editRuleTeacher && !editRuleSubject}
+                                                    className="px-3 py-1.5 text-xs text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                                                >
+                                                    変更を保存
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="grid flex-1 grid-cols-[auto,1fr] gap-x-2 gap-y-1">
+                                                <span className="text-gray-500">生徒:</span>
+                                                <span className={rule.student ? 'font-medium' : 'text-gray-400'}>{rule.student || '未指定'}</span>
+                                                <span className="text-gray-500">講師:</span>
+                                                <span className={rule.teacher ? 'font-medium' : 'text-gray-400'}>{rule.teacher || '未指定'}</span>
+                                                <span className="text-gray-500">科目:</span>
+                                                <span className={rule.subject ? 'font-medium' : 'text-gray-400'}>{rule.subject || '未指定'}</span>
+                                            </div>
+                                            <div className="flex shrink-0 gap-1">
+                                                <button
+                                                    onClick={() => handleStartRuleEdit(rule)}
+                                                    className="flex items-center gap-1 px-2 py-1 text-xs text-blue-700 rounded hover:bg-blue-50"
+                                                >
+                                                    <Pencil size={13} />
+                                                    編集
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteRule(rule.id)}
+                                                    className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 rounded hover:bg-red-50"
+                                                >
+                                                    <Trash2 size={13} />
+                                                    削除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
