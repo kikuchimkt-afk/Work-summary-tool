@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:workbook-summary": "esbuild ./scripts/workbook-summary-regression.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/workbook-summary-regression.cjs && node node_modules/.tmp/workbook-summary-regression.cjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx-js-style';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
+import { readTeacherSummary, type TeacherWorkbookSummary } from './workbookSummary';
 
 export interface PdfExportProgress {
     current: number;
@@ -76,7 +77,7 @@ const createText = (tag: keyof HTMLElementTagNameMap, text: string) => {
     return element;
 };
 
-const buildMetricGrid = (sheet: XLSX.WorkSheet) => {
+const buildMetricGrid = (sheet: XLSX.WorkSheet, summary: TeacherWorkbookSummary | null) => {
     const grid = styleElement(document.createElement('div'), {
         display: 'grid',
         gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
@@ -99,7 +100,8 @@ const buildMetricGrid = (sheet: XLSX.WorkSheet) => {
             letterSpacing: '0.04em',
             whiteSpace: 'nowrap'
         });
-        const value = styleElement(createText('div', getCellText(sheet, 3, column) || '-'), {
+        const summaryValue = summary?.metricValues[column - 7];
+        const value = styleElement(createText('div', summaryValue || getCellText(sheet, 3, column) || '-'), {
             marginTop: '8px',
             color: REPORT_COLORS.forest,
             fontFamily: 'Georgia, "Yu Mincho", serif',
@@ -176,7 +178,12 @@ const buildDetailTable = (sheet: XLSX.WorkSheet, lastRow: number, lastColumn: nu
     return table;
 };
 
-const buildSheetReport = (sheet: XLSX.WorkSheet, teacherLabel: string, periodPrefix: string) => {
+const buildSheetReport = (
+    sheet: XLSX.WorkSheet,
+    teacherLabel: string,
+    periodPrefix: string,
+    summary: TeacherWorkbookSummary | null
+) => {
     const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1:O1');
     const report = styleElement(document.createElement('div'), {
         position: 'fixed',
@@ -276,8 +283,8 @@ const buildSheetReport = (sheet: XLSX.WorkSheet, teacherLabel: string, periodPre
         gap: '10px'
     });
     [
-        { label: getCellText(sheet, 4, 0) || '月間勤務日数', value: getCellText(sheet, 4, 2) || '-' },
-        { label: getCellText(sheet, 5, 0) || '個別授業回数', value: getCellText(sheet, 5, 2) || '-' }
+        { label: getCellText(sheet, 4, 0) || '月間勤務日数', value: summary?.workDays || getCellText(sheet, 4, 2) || '-' },
+        { label: getCellText(sheet, 5, 0) || '個別授業回数', value: summary?.individualLessonCount || getCellText(sheet, 5, 2) || '-' }
     ].forEach(item => {
         const card = styleElement(document.createElement('div'), {
             minWidth: '126px',
@@ -361,7 +368,7 @@ const buildSheetReport = (sheet: XLSX.WorkSheet, teacherLabel: string, periodPre
         accent,
         brandRow,
         identityRow,
-        buildMetricGrid(sheet),
+        buildMetricGrid(sheet, summary),
         detailHeading,
         buildDetailTable(sheet, range.e.r, Math.min(range.e.c, 14))
     );
@@ -444,7 +451,8 @@ export const createTeacherPdfArchive = async (
         cellFormula: true,
         cellDates: false
     });
-    const teacherSheetNames = workbook.SheetNames.filter(name => name !== '集計一覧');
+    const [summarySheetName, ...teacherSheetNames] = workbook.SheetNames;
+    const summarySheet = summarySheetName ? workbook.Sheets[summarySheetName] : undefined;
     if (teacherSheetNames.length === 0) {
         throw new Error('講師別のシートが見つかりません。勤務集計ツールから出力したExcelを選択してください。');
     }
@@ -460,7 +468,8 @@ export const createTeacherPdfArchive = async (
         periodPrefix ||= getPeriodPrefix(sheet);
         onProgress?.({ current: index + 1, total: teacherSheetNames.length, teacher: teacherLabel });
 
-        const report = buildSheetReport(sheet, teacherLabel, periodPrefix);
+        const teacherSummary = summarySheet ? readTeacherSummary(summarySheet, sheetName) : null;
+        const report = buildSheetReport(sheet, teacherLabel, periodPrefix, teacherSummary);
         try {
             const title = `${periodPrefix.slice(0, 4)}年${Number(periodPrefix.slice(4))}月勤務時間集計表_${teacherLabel}`;
             const pdfBytes = await createPdfFromReport(report, title);
