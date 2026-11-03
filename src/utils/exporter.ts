@@ -195,6 +195,12 @@ export interface ExcelFileResult {
     fileName: string;
 }
 
+// Persist the result as well as the formula: Excel may open with calculation
+// suspended, and PDF readers do not evaluate workbook formulas themselves.
+const formulaCell = (f: string, v: number | string, z?: string) => ({
+    f, v, t: typeof v === 'number' ? 'n' : 's', ...(z ? { z } : {})
+});
+
 export const buildExcelFile = (
     generatedData: GeneratedData[],
     teacherStats: Record<string, TeacherStats>,
@@ -233,35 +239,8 @@ export const buildExcelFile = (
         return a.localeCompare(b, 'ja');
     });
 
-    displayedTeachers.forEach(t => {
-        // Use formulas that reference the mini-table (Row 4) in each teacher's individual sheet
-        // H4=1:2, I4=1:2(s), J4=1:1(s), K4=Group, L4=Office, M4=English
-        // For Days and Count, we use COUNTA for days and COUNT for individual lessons
-        const sheetName = `'${t}'`;
-        summaryRows.push([
-            t,
-            { f: `${sheetName}!H4` },  // 1:2
-            { f: `${sheetName}!I4` },  // 1:2(特能)
-            { f: `${sheetName}!J4` },  // 1:1(特能)
-            { f: `${sheetName}!K4` },  // 集団指導
-            { f: `${sheetName}!L4` },  // 事務作業
-            { f: `${sheetName}!M4` },  // 英会話
-            { f: `IF((COUNTIF(${sheetName}!H11:H1000,">0")+COUNTIF(${sheetName}!I11:I1000,">0")+COUNTIF(${sheetName}!J11:J1000,">0"))=0, 0, (COUNTIF(${sheetName}!I11:I1000,">0")+COUNTIF(${sheetName}!J11:J1000,">0"))/(COUNTIF(${sheetName}!H11:H1000,">0")+COUNTIF(${sheetName}!I11:I1000,">0")+COUNTIF(${sheetName}!J11:J1000,">0")))`, z: '0.0%' }, // 特能率
-            { f: `${sheetName}!C5` },  // 勤務日数 (from Row 5, Col C)
-            { f: `${sheetName}!C6` }   // 個別授業回数 (from Row 6, Col C)
-        ]);
-    });
-
-    const wsSum = XLSX.utils.aoa_to_sheet(summaryRows);
-
-    // Style Summary
-    applySheetStyles(wsSum, new Array(displayedTeachers.length).fill({}), getStyleSet(theme), true);
-    // Custom Title style
-    if (wsSum['A1']) wsSum['A1'].s = { font: { name: 'Meiryo UI', sz: 14, bold: true }, border: { bottom: getStyleSet(theme).borderMedium } };
-
-    wsSum['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
-    wsSum['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
-    XLSX.utils.book_append_sheet(wb, wsSum, '集計一覧');
+    // Reserve the first sheet; populate it after the detail ranges are known.
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), '集計一覧');
 
 
     // 2. INDIVIDUAL SHEETS with Weekly Separators
@@ -293,25 +272,14 @@ export const buildExcelFile = (
         rows.push(r3);
 
         // Row 4 (Index 3): Mini Table Data (using formulas)
-        // Data starts at Row 11 (Excel Row), Column H=1:2, I=1:2(s), J=1:1(s), K=Group, L=Office, M=English
-        // We use SUM formulas so user can edit values post-export
-        // Use a large fixed range to ensure all data is captured
-        const r4 = Array(7).fill('');
-        r4.push(
-            { f: `SUM(H11:H1000)` },
-            { f: `SUM(I11:I1000)` },
-            { f: `SUM(J11:J1000)` },
-            { f: `SUM(K11:K1000)` },
-            { f: `SUM(L11:L1000)` },
-            { f: `SUM(M11:M1000)` }
-        );
-        rows.push(r4);
+        // Filled after the detail rows and weekly separators have been laid out.
+        rows.push(Array(13).fill(''));
 
         // Row 5 (Index 4): Days stats - Static value from transformer (unique dates)
         rows.push(['月間勤務日数', '', `${stats.days.size} 日`]);
 
         // Row 6 (Index 5): Count stats - Count individual lessons (non-empty cells in H, I, J columns)
-        rows.push(['個別授業回数', '', { f: `(COUNTIF(H11:H1000,">0")+COUNTIF(I11:I1000,">0")+COUNTIF(J11:J1000,">0"))&" 回"` }]);
+        rows.push(['個別授業回数']);
 
         // Row 7 (Index 6): Empty
         rows.push([]);
@@ -361,6 +329,37 @@ export const buildExcelFile = (
             rows.push(row);
             dataRowsOnly.push(r);
         });
+
+        const endRow = rows.length;
+        const metricColumns = ['H', 'I', 'J', 'K', 'L', 'M'];
+        // Sum the exact exported numeric cells, rather than a possibly stale
+        // precomputed teacherStats object. SUM ignores blank and text cells.
+        const totals = metricColumns.map((_, index) => rows.slice(10).reduce((sum, row) => {
+            const value = row[index + 7];
+            return sum + (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+        }, 0));
+        const counts = metricColumns.slice(0, 3).map((_, index) => rows.slice(10).filter(row => {
+            const value = row[index + 7];
+            return typeof value === 'number' && value > 0;
+        }).length);
+        const lessonCount = counts.reduce((sum, count) => sum + count, 0);
+        const countFormula = (prefix = '') => metricColumns.slice(0, 3)
+            .map(column => `COUNTIF(${prefix}${column}11:${column}${endRow},">0")`);
+        rows[3] = [...Array(7).fill(''), ...metricColumns.map((column, index) =>
+            formulaCell(`SUM(${column}11:${column}${endRow})`, totals[index]))];
+        rows[5] = ['個別授業回数', '', formulaCell(`(${countFormula().join('+')})&" 回"`, `${lessonCount} 回`)];
+
+        const sheetName = `'${teacher.replace(/'/g, "''")}'!`;
+        const summaryCountTerms = countFormula(sheetName);
+        const individualCountFormula = summaryCountTerms.join('+');
+        summaryRows.push([
+            teacher,
+            ...metricColumns.map((column, index) => formulaCell(`${sheetName}${column}4`, totals[index])),
+            formulaCell(`IF((${individualCountFormula})=0,0,(${summaryCountTerms.slice(1).join('+')})/(${individualCountFormula}))`,
+                lessonCount === 0 ? 0 : (counts[1] + counts[2]) / lessonCount, '0.0%'),
+            formulaCell(`${sheetName}C5`, `${stats.days.size} 日`),
+            formulaCell(`${sheetName}C6`, `${lessonCount} 回`)
+        ]);
 
         const ws = XLSX.utils.aoa_to_sheet(rows);
 
@@ -424,6 +423,13 @@ export const buildExcelFile = (
 
         XLSX.utils.book_append_sheet(wb, ws, teacher);
     });
+
+    const wsSum = XLSX.utils.aoa_to_sheet(summaryRows);
+    applySheetStyles(wsSum, new Array(summaryRows.length - 2).fill({}), getStyleSet(theme), true);
+    wsSum['A1'].s = { font: { name: 'Meiryo UI', sz: 14, bold: true }, border: { bottom: getStyleSet(theme).borderMedium } };
+    wsSum['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
+    wsSum['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
+    wb.Sheets['集計一覧'] = wsSum;
 
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const printAreas = wb.SheetNames.map(name => ({

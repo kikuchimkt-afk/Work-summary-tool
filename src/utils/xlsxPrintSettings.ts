@@ -138,6 +138,12 @@ export const applyA4PortraitPrintSettings = (
     });
 
     workbookXml = replacePrintAreaNames(workbookXml, sheetEntries, printAreaMap);
+    // xlsx-js-style does not emit calculation properties. Keep saved formula
+    // results visible, and refresh them when Excel opens or edits the file.
+    const calculationProperties = '<calcPr calcId="0" calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/>';
+    workbookXml = /<calcPr\b/.test(workbookXml)
+        ? workbookXml.replace(/<calcPr\b[^>]*(?:\/>|>[\s\S]*?<\/calcPr>)/, calculationProperties)
+        : workbookXml.replace('</workbook>', `${calculationProperties}</workbook>`);
     files[workbookPath] = strToU8(workbookXml);
     return zipSync(files, { level: 6 });
 };

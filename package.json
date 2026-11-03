@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm test",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:workbook-summary": "esbuild ./scripts/workbook-summary-regression.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/workbook-summary-regression.cjs && node node_modules/.tmp/workbook-summary-regression.cjs"
+    "test:workbook-summary": "esbuild ./scripts/workbook-summary-regression.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/workbook-summary-regression.cjs && node node_modules/.tmp/workbook-summary-regression.cjs",
+    "test:excel-export": "esbuild ./scripts/excel-export-regression.ts --bundle --platform=node --format=cjs --outfile=node_modules/.tmp/excel-export-regression.cjs && node node_modules/.tmp/excel-export-regression.cjs",
+    "test": "npm run test:workbook-summary && npm run test:excel-export"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
